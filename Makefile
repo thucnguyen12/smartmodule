@@ -3,6 +3,6 @@
 # project subdirectory.
 #
 
-PROJECT_NAME := pppos_client
+PROJECT_NAME := smart_modul_sample
 
 include $(IDF_PATH)/make/project.mk
