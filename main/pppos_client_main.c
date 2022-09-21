@@ -106,6 +106,8 @@ typedef enum
     ETHERNET_PROTOCOL
 } protocol_type;
 protocol_type protocol_using = DEFAULT_PROTOCOL;
+static char* wifi_name;
+static char* wifi_pass;
 void device_reboot(uint8_t reason)
 {
     (void)reason;
@@ -988,12 +990,16 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_modem_set_event_handler(dte, modem_event_handler, ESP_EVENT_ANY_ID, NULL)); //FOR MODEM
     ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, &eth_event_handler, NULL)); //  FOR ETH
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &got_ip_event_handler, NULL)); // FOR IP
-    /*/     NO NEED BEGIN WIFI NOW TO SAVE RESOUCE
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_PPP_GOT_IP, &got_ip_event_handler, NULL)); // FOR IP
+    
     ESP_LOGI (TAG, "BEGIN WIFI");
     app_wifi_connect (CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
     ESP_LOGI (TAG, "WIFI CONNECT");
+    
+    ESP_ERROR_CHECK(esp_eth_start(eth_handle));
+    ESP_LOGI (TAG, "ETH CONNECT");
     do_ping_cmd(); //pinging to addr
-    /*/
+    
     //init testing applications
     EventBits_t uxBitsPing = xEventGroupWaitBits(s_wifi_event_group, WIFI_PING_TIMEOUT | WIFI_PING_SUCESS, pdTRUE, pdFALSE, portMAX_DELAY);
     if (uxBitsPing & WIFI_PING_TIMEOUT)
@@ -1009,7 +1015,8 @@ void app_main(void)
     {
         ESP_LOGI (TAG, "PING UNEXPECTED EVENT");
     }
-    // start mqtt
+
+    start mqtt:
     esp_mqtt_client_handle_t mqtt_client = esp_mqtt_client_init(&mqtt_config);
     esp_mqtt_client_start(mqtt_client);
     while(1) {
@@ -1018,12 +1025,45 @@ void app_main(void)
 /*
     REGISTER TOPIC
 
-*/
-        
+*/   
+        if (protocol_using != WIFI_PROTOCOL)
+        {
+            EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
+                                           WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+                                           pdFALSE,
+                                           pdFALSE,
+                                           2000);
+            if (bits & WIFI_CONNECTED_BIT)
+            {
+                m_got_ip = true;
+                ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
+                        CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
+                protocol_using = WIFI_PROTOCOL;
+            }
+            else if (bits & WIFI_FAIL_BIT)
+            {
+                ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
+                        CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
+                protocol_using = ETHERNET_PROTOCOL;
+            }
+            else
+            {
+                ESP_LOGE(TAG, "UNEXPECTED EVENT");
+            }
+        }
+        else if (protocol_using != ETHERNET_PROTOCOL)
+        {
+            protocol_using = ETHERNET_PROTOCOL;
+        }
+        else
+        {
+            protocol_using = GSM_4G_PROTOCOL;
+        }
 
         switch (protocol_using)
         {
         case WIFI_PROTOCOL:
+        
             ESP_LOGI (TAG, "BEGIN WIFI");
             app_wifi_connect (CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
             ESP_LOGI (TAG, "WIFI CONNECT");
@@ -1068,7 +1108,7 @@ void app_main(void)
             }
             esp_mqtt_client_destroy(mqtt_client);
             ESP_LOGI(TAG, "destroy mqtt");
-            esp_wifi_stop();
+            //esp_wifi_stop();
             break;
         case ETHERNET_PROTOCOL:
             ESP_ERROR_CHECK(esp_eth_start(eth_handle));
@@ -1098,7 +1138,7 @@ void app_main(void)
             esp_mqtt_client_destroy(mqtt_client);
             ESP_ERROR_CHECK(esp_eth_stop(eth_handle));
             ESP_LOGI(TAG, "destroy mqtt");
-        }
+        
         break;
         case GSM_4G_PROTOCOL:
             dce = NULL;
@@ -1160,9 +1200,6 @@ void app_main(void)
             ESP_LOGE(TAG, "this would like to never reach");
             break;
         }
-
-
-
         //do cmd nghiep vu
         /*
             can check li do reset mem     
