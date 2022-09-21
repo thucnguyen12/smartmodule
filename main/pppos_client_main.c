@@ -66,8 +66,7 @@
 
 #define BROKER_URL "mqtt://mqtt.eclipseprojects.io:1883"
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_PSK
-#define CONFIG_ESP_WIFI_SSID "BYTECH_T3"
-#define CONFIG_ESP_WIFI_PASSWORD "bytech@2020"
+
 #define DEFAULT_PROTOCOL WIFI_PROTOCOL
 
 #define EXAMPLE_PING_IP            "www.google.com"
@@ -98,6 +97,7 @@ modem_dte_t *dte = NULL;
 // extern const uint8_t server_cert_pem_start[] asm("_binary_ca_cert_pem_start");
 // extern const uint8_t server_cert_pem_end[] asm("_binary_ca_cert_pem_end");
 extern QueueHandle_t uart1_queue;
+extern QueueHandle_t uart0_queue;
 
 typedef enum
 {
@@ -106,6 +106,13 @@ typedef enum
     ETHERNET_PROTOCOL
 } protocol_type;
 protocol_type protocol_using = DEFAULT_PROTOCOL;
+void device_reboot(uint8_t reason)
+{
+    (void)reason;
+    ESP_LOGE(TAG, "Device reboot reason %u", reason);
+    vTaskDelay(1000);
+    esp_restart();
+}
 
 #if CONFIG_EXAMPLE_SEND_MSG
 /**
@@ -784,9 +791,24 @@ static void uart_event_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 #endif
+
+void change_protocol_using_to (protocol_type protocol)
+{
+    if (protocol_using != protocol)
+    {
+        protocol_using = protocol;
+    }
+    else if (protocol_using == protocol)
+    {
+        ESP_LOGE (TAG, "WRONG PROTOCOL CHANGED, CHANGE AUTO");
+        protocol_using = DEFAULT_PROTOCOL;
+    }
+}
+
+
 void app_main(void)
 {
-    // sys_delay_ms (10000);
+
 /*/
     this space to test code and write what need to do
     
@@ -838,15 +860,12 @@ void app_main(void)
             ESP_ERROR_CHECK(esp_eth_driver_install(&config, &eth_handle));
             //attach Ethernet driver to TCP/IP stack
             ESP_ERROR_CHECK(esp_netif_attach(eth_netif, esp_eth_new_netif_glue(eth_handle)));
-
         }        
     }
 
 /*/
 #warning "need gpio config"
-
     gsm_gpio_config ();
-
     CHECK_ERROR_CODE(esp_task_wdt_init(TWDT_TIMEOUT_S, false), ESP_OK);
 //subcribe this task and checks it
     CHECK_ERROR_CODE(esp_task_wdt_add(NULL), ESP_OK);
@@ -873,13 +892,13 @@ void app_main(void)
         .source_clk = UART_SCLK_APB,
         };
     uart_driver_install(UART_NUM_1, BUF_SIZE * 2, BUF_SIZE * 2, 20, &uart1_queue, 0);
-//    uart_driver_install(UART_NUM_0, BUF_SIZE * 2, BUF_SIZE * 2, 20, &uart0_queue, 0);
+    uart_driver_install(UART_NUM_0, BUF_SIZE * 2, BUF_SIZE * 2, 20, &uart0_queue, 0);
     uart_param_config(UART_NUM_1, &uart_config);
     uart_param_config(UART_NUM_0, &uart_config);        
     uart_set_pin(UART_NUM_1, GPIO_TX1, GPIO_RX1, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);//uart for connectivity from esp to gd
     //ESP32 <==> 4G MODULE
     uart_set_pin(UART_NUM_0, GPIO_TX0, GPIO_RX0, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE); //uart for gsm
-
+                                           
 #if CONFIG_LWIP_PPP_PAP_SUPPORT
     esp_netif_auth_type_t auth_type = NETIF_PPP_AUTHTYPE_PAP;
 #elif CONFIG_LWIP_PPP_CHAP_SUPPORT
@@ -969,19 +988,180 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_modem_set_event_handler(dte, modem_event_handler, ESP_EVENT_ANY_ID, NULL)); //FOR MODEM
     ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, &eth_event_handler, NULL)); //  FOR ETH
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &got_ip_event_handler, NULL)); // FOR IP
+    /*/     NO NEED BEGIN WIFI NOW TO SAVE RESOUCE
     ESP_LOGI (TAG, "BEGIN WIFI");
     app_wifi_connect (CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
     ESP_LOGI (TAG, "WIFI CONNECT");
     do_ping_cmd(); //pinging to addr
+    /*/
     //init testing applications
-    
+    EventBits_t uxBitsPing = xEventGroupWaitBits(s_wifi_event_group, WIFI_PING_TIMEOUT | WIFI_PING_SUCESS, pdTRUE, pdFALSE, portMAX_DELAY);
+    if (uxBitsPing & WIFI_PING_TIMEOUT)
+    {
+        ESP_LOGI (TAG, "PING TIMEOUT");
+        break;
+    }
+    else if (uxBitsPing & WIFI_PING_SUCESS)
+    {
+        ESP_LOGI (TAG, "PING OK");
+    }
+    else
+    {
+        ESP_LOGI (TAG, "PING UNEXPECTED EVENT");
+    }
     // start mqtt
     esp_mqtt_client_handle_t mqtt_client = esp_mqtt_client_init(&mqtt_config);
     esp_mqtt_client_start(mqtt_client);
     while(1) {
 
-        CHECK_ERROR_CODE(esp_task_wdt_reset(), ESP_OK);  //Comment this line to trigger a TWDT timeout
-        xEventGroupWaitBits(event_group, CONNECT_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
+///********************************* THIS START CODE CHANGED PROTOCOL
+/*
+    REGISTER TOPIC
+
+*/
+        
+
+        switch (protocol_using)
+        {
+        case WIFI_PROTOCOL:
+            ESP_LOGI (TAG, "BEGIN WIFI");
+            app_wifi_connect (CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
+            ESP_LOGI (TAG, "WIFI CONNECT");
+            do_ping_cmd(); //pinging to addr 
+            EventBits_t uxBitsPing = xEventGroupWaitBits(s_wifi_event_group, WIFI_PING_TIMEOUT | WIFI_PING_SUCESS, pdTRUE, pdFALSE, portMAX_DELAY);
+            if (uxBitsPing & WIFI_PING_TIMEOUT)
+            {
+                ESP_LOGI (TAG, "PING TIMEOUT, RETRY WITH ETH");
+                change_protocol_using_to (ETHERNET_PROTOCOL);
+                break;
+            }
+            else if (uxBitsPing & WIFI_PING_SUCESS)
+            {
+                ESP_LOGI (TAG, "PING OK");
+            }
+            else
+            {
+                ESP_LOGI (TAG, "PING UNEXPECTED EVENT");
+            }
+            mqtt_client = esp_mqtt_client_init(&mqtt_config);
+            esp_mqtt_client_start(mqtt_client);
+            while (1)
+            {
+                EventBits_t uxBits = xEventGroupWaitBits(event_group, MQTT_DIS_CONNECT_BIT, pdTRUE, pdTRUE, 10); // piority check disconnected event
+                if ( (uxBits & MQTT_DIS_CONNECT_BIT) == MQTT_DIS_CONNECT_BIT)
+                {
+                    ESP_LOGI (TAG, "mqtt disconnected bitrev");
+                    // network_connected = false;
+
+                    change_protocol_using_to (ETHERNET_PROTOCOL);
+                    app_time();
+                    vTaskDelay(500 / portTICK_PERIOD_MS);
+                    break;
+                }
+                /* this space for functions */
+                //xEventGroupWaitBits(event_group, GOT_DATA_BIT, pdTRUE, pdTRUE, 1000 / portTICK_RATE_MS);
+                ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 100);
+                if (ubits & WAIT_BIT)
+                {
+                    xTaskCreate(&advanced_ota_example_task, "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
+                }
+            }
+            esp_mqtt_client_destroy(mqtt_client);
+            ESP_LOGI(TAG, "destroy mqtt");
+            esp_wifi_stop();
+            break;
+        case ETHERNET_PROTOCOL:
+            ESP_ERROR_CHECK(esp_eth_start(eth_handle));
+
+            xEventGroupWaitBits(event_group, CONNECT_BIT, pdTRUE, pdTRUE, portMAX_DELAY); // wait ip address need fix when it is fail forever    
+            mqtt_client = esp_mqtt_client_init(&mqtt_config);
+            esp_mqtt_client_start(mqtt_client);
+            while (1)
+            {
+                EventBits_t uxBits = xEventGroupWaitBits(event_group, MQTT_DIS_CONNECT_BIT, pdTRUE, pdTRUE, 10);
+                if ( (uxBits & MQTT_DIS_CONNECT_BIT) == MQTT_DIS_CONNECT_BIT)
+                {
+                    ESP_LOGI (TAG, "mqtt disconnected bit rev");
+                    
+                    //protocol_using = WIFI_PROTOCOL;
+                    change_protocol_using_to (GSM_4G_PROTOCOL);
+                    break;
+                }
+                xEventGroupWaitBits(event_group, GOT_DATA_BIT, pdTRUE, pdTRUE, 1000 / portTICK_RATE_MS);
+                ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 100);
+                if (ubits & WAIT_BIT)
+                {
+                    xTaskCreate(&advanced_ota_example_task, "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
+                }
+                /* this space for functions if there no disconnect or ota event */
+            }
+            esp_mqtt_client_destroy(mqtt_client);
+            ESP_ERROR_CHECK(esp_eth_stop(eth_handle));
+            ESP_LOGI(TAG, "destroy mqtt");
+        }
+        break;
+        case GSM_4G_PROTOCOL:
+            dce = NULL;
+            dce = ec2x_init (dte);
+            if(dce == NULL)
+            {
+                ESP_LOGE(TAG, "INT 4G FAIL");
+                //protocol_using = WIFI_PROTOCOL;
+                change_protocol_using_to (WIFI_PROTOCOL);
+                continue;
+            }
+            xEventGroupWaitBits(event_group, CONNECT_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
+
+            esp_mqtt_client_handle_t mqtt_client = esp_mqtt_client_init(&mqtt_config);
+            esp_mqtt_client_start(mqtt_client);
+            while (1)
+            {
+                EventBits_t uxBits = xEventGroupWaitBits(event_group, MQTT_DIS_CONNECT_BIT, pdTRUE, pdTRUE, 10);
+                if ( (uxBits & MQTT_DIS_CONNECT_BIT) == MQTT_DIS_CONNECT_BIT)
+                {
+                    ESP_LOGI (TAG, "mqtt disconnected bit rev");
+                    // network_connected = false;
+                    //protocol_using = WIFI_PROTOCOL;
+                    change_protocol_using_to (WIFI_PROTOCOL);
+                    break;
+                }
+                xEventGroupWaitBits(event_group, GOT_DATA_BIT, pdTRUE, pdTRUE, 1000 / portTICK_RATE_MS);
+                ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 100);
+                if (ubits & WAIT_BIT)
+                {
+                    xTaskCreate(&advanced_ota_example_task, "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
+                }
+                /*THIS SPACE FOR FUNCTION*/
+            }
+            esp_mqtt_client_destroy(mqtt_client);
+            ESP_LOGI(TAG, "destroy mqtt");
+            /* Exit PPP mode */
+            ESP_ERROR_CHECK(esp_modem_stop_ppp(dte));
+            ESP_LOGI(TAG, "ppp stop");
+            xEventGroupWaitBits(event_group, STOP_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
+#if CONFIG_EXAMPLE_SEND_MSG
+            const char *message = "Welcome to ESP32!";
+            ESP_ERROR_CHECK(example_send_message_text(dce, CONFIG_EXAMPLE_SEND_MSG_PEER_PHONE_NUMBER, message));
+            ESP_LOGI(TAG, "Send send message [%s] ok", message);
+#endif
+            /* Power down module */
+            ESP_ERROR_CHECK(dce->power_down(dce));
+            ESP_LOGI(TAG, "Power down");
+            ESP_ERROR_CHECK(dce->deinit(dce));
+            if (esp_modem_netif_clear_default_handlers(modem_netif_adapter) == ESP_OK)
+            {
+                ESP_LOGI ("UNREGISTER", "CLEAR TO REINIT");
+            }
+            esp_modem_netif_teardown(modem_netif_adapter);
+            esp_netif_destroy(esp_netif);
+            ESP_LOGI ("UNREGISTER", "CLEAR TO REINIT");
+        break;
+        default:
+            ESP_LOGE(TAG, "this would like to never reach");
+            break;
+        }
+
+
 
         //do cmd nghiep vu
         /*
@@ -991,3 +1171,5 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(dte->deinit(dte));
 }
+
+

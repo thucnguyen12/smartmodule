@@ -1581,7 +1581,8 @@ modem_dce_t *ec2x_init(modem_dte_t *dte)
 
 
     gsm_hardware_initialize();
-
+    
+    gsm_hw_ctrl_power_key(1);
     //Deactive PowerKey
     ESP_LOGI(TAG, "Deactive power key\r\n");
     gsm_hw_ctrl_power_key(0);

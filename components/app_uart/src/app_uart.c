@@ -22,7 +22,7 @@
 
 static const char *TAG = "app_uart";
 QueueHandle_t uart1_queue;
-
+QueueHandle_t uart0_queue;
 void uart_event_task(void *pvParameters)
 {
     uart_event_t event;
@@ -31,7 +31,7 @@ void uart_event_task(void *pvParameters)
     for(;;) {
         // need add more uart for 4g, rs485, and so far
         //Waiting for UART event.
-        if(xQueueReceive(uart1_queue, (void * )&event, (TickType_t)portMAX_DELAY)) {
+        if(xQueueReceive(uart1_queue, (void * )&event, (TickType_t)500)) {
             bzero(dtmp, RD_BUF_SIZE);
             ESP_LOGI(TAG, "uart[%d] event:", UART_NUM_1);
             switch(event.type) {
@@ -98,6 +98,10 @@ void uart_event_task(void *pvParameters)
                     ESP_LOGI(TAG, "uart event type: %d", event.type);
                     break;
             }
+        }
+        else if (xQueueReceive(uart0_queue, (void * )&event, (TickType_t)500)
+        {
+            
         }
     }
     free(dtmp);

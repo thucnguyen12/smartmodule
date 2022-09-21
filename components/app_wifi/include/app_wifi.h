@@ -8,15 +8,19 @@
 #ifndef COMPONENTS_APP_WIFI_INCLUDE_APP_WIFI_H_
 #define COMPONENTS_APP_WIFI_INCLUDE_APP_WIFI_H_
 
+
+
+#include <stdint.h>
+#include <stdbool.h>
+
 #define WIFI_MAXIMUM_RETRY           10
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
 #define WIFI_PING_SUCESS BIT2
 #define WIFI_PING_TIMEOUT BIT3
 
-#include <stdint.h>
-#include <stdbool.h>
-
+#define CONFIG_ESP_WIFI_SSID "BYTECH_T3"
+#define CONFIG_ESP_WIFI_PASSWORD "bytech@2020"
 
 
 /**
