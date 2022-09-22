@@ -61,6 +61,7 @@
 #include "driver/spi_master.h"
 #endif // CONFIG_ETH_USE_SPI_ETHERNET
 
+#include "lwrb.h"
 #include "gpio_defination.h"
 
 
@@ -78,6 +79,7 @@
 #define TASK_RESET_PERIOD_S     2
 
 #define CONFIG_EXAMPLE_SKIP_VERSION_CHECK 1
+#define UART_RINGBUFF_SIZE 1024
 
 static const char *TAG = "pppos_example";
 static EventGroupHandle_t event_group = NULL;
@@ -98,6 +100,8 @@ modem_dte_t *dte = NULL;
 // extern const uint8_t server_cert_pem_end[] asm("_binary_ca_cert_pem_end");
 extern QueueHandle_t uart1_queue;
 extern QueueHandle_t uart0_queue;
+lwrb_t data_uart_module_rb;
+char uart_buffer[UART_RINGBUFF_SIZE];
 
 typedef enum
 {
@@ -106,8 +110,8 @@ typedef enum
     ETHERNET_PROTOCOL
 } protocol_type;
 protocol_type protocol_using = DEFAULT_PROTOCOL;
-static char* wifi_name;
-static char* wifi_pass;
+static char* wifi_name = CONFIG_ESP_WIFI_SSID;
+static char* wifi_pass = CONFIG_ESP_WIFI_PASSWORD;
 void device_reboot(uint8_t reason)
 {
     (void)reason;
@@ -480,129 +484,6 @@ void gsm_gpio_config (void)
     gpio_config (&io_config);
 }
 
-static esp_err_t validate_image_header(esp_app_desc_t *new_app_info)
-{
-    if (new_app_info == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    const esp_partition_t *running = esp_ota_get_running_partition();
-    esp_app_desc_t running_app_info;
-    if (esp_ota_get_partition_description(running, &running_app_info) == ESP_OK) {
-        ESP_LOGI(TAG, "Running firmware version: %s", running_app_info.version);
-    }
-
-#ifndef CONFIG_EXAMPLE_SKIP_VERSION_CHECK
-    if (memcmp(new_app_info->version, running_app_info.version, sizeof(new_app_info->version)) == 0) {
-        ESP_LOGW(TAG, "Current running version is the same as a new. We will not continue the update.");
-        return ESP_FAIL;
-    }
-#endif
-
-#ifdef CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK
-    /**
-     * Secure version check from firmware image header prevents subsequent download and flash write of
-     * entire firmware image. However this is optional because it is also taken care in API
-     * esp_https_ota_finish at the end of OTA update procedure.
-     */
-    const uint32_t hw_sec_version = esp_efuse_read_secure_version();
-    if (new_app_info->secure_version < hw_sec_version) {
-        ESP_LOGW(TAG, "New firmware security version is less than eFuse programmed, %d < %d", new_app_info->secure_version, hw_sec_version);
-        return ESP_FAIL;
-    }
-#endif
-
-    return ESP_OK;
-}
-
-static esp_err_t _http_client_init_cb(esp_http_client_handle_t http_client)
-{
-    esp_err_t err = ESP_OK;
-    /* Uncomment to add custom headers to HTTP request */
-    // err = esp_http_client_set_header(http_client, "Custom-Header", "Value");
-    return err;
-}
-void time_sync_notification_cb(struct timeval *tv)
-{
-
-    ESP_LOGI(TAG, "Notification of a time synchronization event");
-}
-
-static void initialize_sntp(void)
-{
-    ESP_LOGI(TAG, "Initializing SNTP");
-    sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    sntp_setservername(0, "pool.ntp.org");
-    sntp_set_time_sync_notification_cb(time_sync_notification_cb);
-#ifdef CONFIG_SNTP_TIME_SYNC_METHOD_SMOOTH
-    sntp_set_sync_mode(SNTP_SYNC_MODE_SMOOTH);
-#endif
-    sntp_init();
-}
-
-static void obtain_time(void)
-{
-    /* this is not necessory cause we alreadey connected
-
-    ESP_ERROR_CHECK( nvs_flash_init() );
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK( esp_event_loop_create_default() );
-    
-    */
-
-    /**
-     * NTP server address could be aquired via DHCP,
-     * see LWIP_DHCP_GET_NTP_SRV menuconfig option
-     */
-
-#ifdef LWIP_DHCP_GET_NTP_SRV
-    sntp_servermode_dhcp(1);
-#endif
-
-    /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
-     * Read "Establishing Wi-Fi or Ethernet Connection" section in
-     * examples/protocols/README.md for more information about this function.
-     */
-    // ESP_ERROR_CHECK(example_connect());
-    
-    initialize_sntp();
-
-    // wait for time to be set
-    time_t now = 0;
-    struct tm timeinfo = { 0 };
-    int retry = 0;
-    const int retry_count = 10;
-    while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < retry_count) {
-        ESP_LOGI(TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
-    }
-    time(&now);
-    localtime_r(&now, &timeinfo);
-
-    //ESP_ERROR_CHECK( example_disconnect() );
-}
-
-void app_time(void)
-{
-    time_t now;
-    struct tm timeinfo;
-    // need update time before get localtime
-    time(&now);
-    localtime_r(&now, &timeinfo);
-    if (timeinfo.tm_year < (2016 - 1900)) {
-        ESP_LOGI(TAG, "Time is not set yet. Connecting to WiFi and getting time over NTP.");
-        obtain_time();
-        // update 'now' variable with current time
-        time(&now);
-    }
-    setenv("TZ", "Etc/GMT+7", 1);
-    tzset();
-    localtime_r(&now, &timeinfo);
-    char strftime_buf[64];
-    strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-    ESP_LOGI(TAG, "The current date/time in New York is: %s", strftime_buf);
-}
-
 //Callback for user tasks created in app_main()
 void reset_task(void *arg)
 {
@@ -617,183 +498,6 @@ void reset_task(void *arg)
     }
 }
 
-
-void advanced_ota_example_task(void *pvParameter)
-{
-    ESP_LOGI(TAG, "Starting Advanced OTA example");
-
-    esp_err_t ota_finish_err = ESP_OK;
-    esp_http_client_config_t config = {
-        .url = "http://192.168.2.241/pppos_client.bin",
-        .cert_pem = (char *)"",
-        .timeout_ms = 5000,
-        .keep_alive_enable = true,
-    };
-
-#ifdef CONFIG_EXAMPLE_FIRMWARE_UPGRADE_URL_FROM_STDIN
-    char url_buf[OTA_URL_SIZE];
-    if (strcmp(config.url, "FROM_STDIN") == 0) {
-        example_configure_stdin_stdout();
-        fgets(url_buf, OTA_URL_SIZE, stdin);
-        int len = strlen(url_buf);
-        url_buf[len - 1] = '\0';
-        config.url = url_buf;
-    } else {
-        ESP_LOGE(TAG, "Configuration mismatch: wrong firmware upgrade image url");
-        abort();
-    }
-#endif
-
-#ifdef CONFIG_EXAMPLE_SKIP_COMMON_NAME_CHECK
-    config.skip_cert_common_name_check = true;
-#endif
-
-    esp_https_ota_config_t ota_config = {
-        .http_config = &config,
-        .http_client_init_cb = _http_client_init_cb, // Register a callback to be invoked after esp_http_client is initialized
-    };
-
-    esp_https_ota_handle_t https_ota_handle = NULL;
-    esp_err_t err = esp_https_ota_begin(&ota_config, &https_ota_handle);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "ESP HTTPS OTA Begin failed");
-        vTaskDelete(NULL);
-    }
-
-    esp_app_desc_t app_desc;
-    err = esp_https_ota_get_img_desc(https_ota_handle, &app_desc);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "esp_https_ota_read_img_desc failed");
-        goto ota_end;
-    }
-    err = validate_image_header(&app_desc);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "image header verification failed");
-        goto ota_end;
-    }
-
-    while (1) {
-        err = esp_https_ota_perform(https_ota_handle);
-        if (err != ESP_ERR_HTTPS_OTA_IN_PROGRESS) {
-            break;
-        }
-        // esp_https_ota_perform returns after every read operation which gives user the ability to
-        // monitor the status of OTA upgrade by calling esp_https_ota_get_image_len_read, which gives length of image
-        // data read so far.
-        ESP_LOGD(TAG, "Image bytes read: %d", esp_https_ota_get_image_len_read(https_ota_handle));
-    }
-
-    if (esp_https_ota_is_complete_data_received(https_ota_handle) != true) {
-        // the OTA image was not completely received and user can customise the response to this situation.
-        ESP_LOGE(TAG, "Complete data was not received.");
-    } else {
-        ota_finish_err = esp_https_ota_finish(https_ota_handle);
-        if ((err == ESP_OK) && (ota_finish_err == ESP_OK)) {
-            ESP_LOGI(TAG, "ESP_HTTPS_OTA upgrade successful. Rebooting ...");
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
-            esp_restart();
-        } else {
-            if (ota_finish_err == ESP_ERR_OTA_VALIDATE_FAILED) {
-                ESP_LOGE(TAG, "Image validation failed, image is corrupted");
-            }
-            ESP_LOGE(TAG, "ESP_HTTPS_OTA upgrade failed 0x%x", ota_finish_err);
-            esp_restart();
-            vTaskDelete(NULL);
-        }
-    }
-
-ota_end:
-    esp_https_ota_abort(https_ota_handle);
-    ESP_LOGE(TAG, "ESP_HTTPS_OTA upgrade failed");
-    vTaskDelete(NULL);
-}
-#if 0 // uart
-
-#define RD_BUF_SIZE (BUF_SIZE)
-//********************* UART EVENT *******************
-static void uart_event_task(void *pvParameters)
-{
-    uart_event_t event;
-    size_t buffered_size;
-    uint8_t* dtmp = (uint8_t*) malloc(RD_BUF_SIZE);
-    for(;;) {
-        // need add more uart for 4g, rs485, and so far
-        //Waiting for UART event.
-        if(xQueueReceive(uart1_queue, (void * )&event, (TickType_t)portMAX_DELAY)) {
-            bzero(dtmp, RD_BUF_SIZE);
-            ESP_LOGI(TAG, "uart[%d] event:", UART_NUM_1);
-            switch(event.type) {
-                //Event of UART receving data
-                /*We'd better handler data event fast, there would be much more data events than
-                other types of events. If we take too much time on data event, the queue might
-                be full.*/
-                case UART_DATA:
-                    //ESP_LOGI(TAG, "[UART DATA]: %d", event.size);
-                    uart_read_bytes(UART_NUM_1, dtmp, event.size, portMAX_DELAY);
-                    ESP_LOGI(TAG, "[DATA EVT]:");
-                    uart_write_bytes(UART_NUM_1, (const char*) dtmp, event.size);
-                    break;
-                //Event of HW FIFO overflow detected
-                case UART_FIFO_OVF:
-                    ESP_LOGI(TAG, "hw fifo overflow");
-                    // If fifo overflow happened, you should consider adding flow control for your application.
-                    // The ISR has already reset the rx FIFO,
-                    // As an example, we directly flush the rx buffer here in order to read more data.
-                    uart_flush_input(UART_NUM_1);
-                    xQueueReset(uart1_queue);
-                    break;
-                //Event of UART ring buffer full
-                case UART_BUFFER_FULL:
-                    ESP_LOGI(TAG, "ring buffer full");
-                    // If buffer full happened, you should consider encreasing your buffer size
-                    // As an example, we directly flush the rx buffer here in order to read more data.
-                    uart_flush_input(UART_NUM_1);
-                    xQueueReset(uart1_queue);
-                    break;
-                //Event of UART RX break detected
-                case UART_BREAK:
-                    ESP_LOGI(TAG, "uart rx break");
-                    break;
-                //Event of UART parity check error
-                case UART_PARITY_ERR:
-                    ESP_LOGI(TAG, "uart parity error");
-                    break;
-                //Event of UART frame error
-                case UART_FRAME_ERR:
-                    ESP_LOGI(TAG, "uart frame error");
-                    break;
-                //UART_PATTERN_DET
-                case UART_PATTERN_DET:
-                    uart_get_buffered_data_len(UART_NUM_1, &buffered_size);
-                    int pos = uart_pattern_pop_pos(UART_NUM_1);
-                    ESP_LOGI(TAG, "[UART PATTERN DETECTED] pos: %d, buffered size: %d", pos, buffered_size);
-                    if (pos == -1) {
-                        // There used to be a UART_PATTERN_DET event, but the pattern position queue is full so that it can not
-                        // record the position. We should set a larger queue size.
-                        // As an example, we directly flush the rx buffer here.
-                        uart_flush_input(UART_NUM_1);
-                    } else {
-                        uart_read_bytes(UART_NUM_1, dtmp, pos, 100 / portTICK_PERIOD_MS);
-                        uint8_t pat[PATTERN_CHR_NUM + 1];
-                        memset(pat, 0, sizeof(pat));
-                        uart_read_bytes(UART_NUM_1, pat, PATTERN_CHR_NUM, 100 / portTICK_PERIOD_MS);
-                        ESP_LOGI(TAG, "read data: %s", dtmp);
-                        ESP_LOGI(TAG, "read pat : %s", pat);
-                    }
-                    break;
-                //Others
-                default:
-                    ESP_LOGI(TAG, "uart event type: %d", event.type);
-                    break;
-            }
-        }
-    }
-    free(dtmp);
-    dtmp = NULL;
-    vTaskDelete(NULL);
-}
-#endif
-
 void change_protocol_using_to (protocol_type protocol)
 {
     if (protocol_using != protocol)
@@ -807,6 +511,21 @@ void change_protocol_using_to (protocol_type protocol)
     }
 }
 
+void handle_uart_data_task(void)
+{
+    uint8_t* data = (uint8_t*)malloc (1024);
+    lwrb_read (&data_uart_module_rb, data, 1024);
+    /*
+        xu li data 
+    */
+}
+
+void send_data_to_gd32 (char *data, uint8_t size)
+{
+
+    uart_write_bytes (UART_NUM_1, (const char*) data, size);
+
+}
 
 void app_main(void)
 {
@@ -900,6 +619,7 @@ void app_main(void)
     uart_set_pin(UART_NUM_1, GPIO_TX1, GPIO_RX1, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);//uart for connectivity from esp to gd
     //ESP32 <==> 4G MODULE
     uart_set_pin(UART_NUM_0, GPIO_TX0, GPIO_RX0, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE); //uart for gsm
+    lwrb_init (&data_uart_module_rb, uart_buffer, UART_RINGBUFF_SIZE); //init lwrb
                                            
 #if CONFIG_LWIP_PPP_PAP_SUPPORT
     esp_netif_auth_type_t auth_type = NETIF_PPP_AUTHTYPE_PAP;
@@ -993,7 +713,7 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_PPP_GOT_IP, &got_ip_event_handler, NULL)); // FOR IP
     
     ESP_LOGI (TAG, "BEGIN WIFI");
-    app_wifi_connect (CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
+    app_wifi_connect (wifi_name, wifi_pass);
     ESP_LOGI (TAG, "WIFI CONNECT");
     
     ESP_ERROR_CHECK(esp_eth_start(eth_handle));
@@ -1024,15 +744,15 @@ void app_main(void)
 ///********************************* THIS START CODE CHANGED PROTOCOL
 /*
     REGISTER TOPIC
-
-*/   
+*/
         if (protocol_using != WIFI_PROTOCOL)
         {
+            app_wifi_connect (wifi_name, wifi_pass);
             EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
                                            WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
                                            pdFALSE,
                                            pdFALSE,
-                                           2000);
+                                           5000);
             if (bits & WIFI_CONNECTED_BIT)
             {
                 m_got_ip = true;
@@ -1065,7 +785,7 @@ void app_main(void)
         case WIFI_PROTOCOL:
         
             ESP_LOGI (TAG, "BEGIN WIFI");
-            app_wifi_connect (CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
+            app_wifi_connect (wifi_name, wifi_pass);
             ESP_LOGI (TAG, "WIFI CONNECT");
             do_ping_cmd(); //pinging to addr 
             EventBits_t uxBitsPing = xEventGroupWaitBits(s_wifi_event_group, WIFI_PING_TIMEOUT | WIFI_PING_SUCESS, pdTRUE, pdFALSE, portMAX_DELAY);
@@ -1087,6 +807,7 @@ void app_main(void)
             esp_mqtt_client_start(mqtt_client);
             while (1)
             {
+                
                 EventBits_t uxBits = xEventGroupWaitBits(event_group, MQTT_DIS_CONNECT_BIT, pdTRUE, pdTRUE, 10); // piority check disconnected event
                 if ( (uxBits & MQTT_DIS_CONNECT_BIT) == MQTT_DIS_CONNECT_BIT)
                 {
@@ -1094,17 +815,20 @@ void app_main(void)
                     // network_connected = false;
 
                     change_protocol_using_to (ETHERNET_PROTOCOL);
-                    app_time();
+                    //app_time();
                     vTaskDelay(500 / portTICK_PERIOD_MS);
                     break;
                 }
-                /* this space for functions */
+                app_time();
                 //xEventGroupWaitBits(event_group, GOT_DATA_BIT, pdTRUE, pdTRUE, 1000 / portTICK_RATE_MS);
-                ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 100);
+                ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 100); // We maybe 
                 if (ubits & WAIT_BIT)
                 {
                     xTaskCreate(&advanced_ota_example_task, "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
                 }
+
+                /* this space for functions */
+                handle_uart_data_task();
             }
             esp_mqtt_client_destroy(mqtt_client);
             ESP_LOGI(TAG, "destroy mqtt");
@@ -1134,6 +858,7 @@ void app_main(void)
                     xTaskCreate(&advanced_ota_example_task, "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
                 }
                 /* this space for functions if there no disconnect or ota event */
+
             }
             esp_mqtt_client_destroy(mqtt_client);
             ESP_ERROR_CHECK(esp_eth_stop(eth_handle));

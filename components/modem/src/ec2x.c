@@ -528,8 +528,8 @@ esp_err_t ec2x_modem_dce_echo(ec2x_modem_dce_t *ec2x_dce, bool on)
 
     if (on)
     {
-        if (dte->send_cmd(dte, "ATE1\r", MODEM_COMMAND_TIMEOUT_DEFAULT) != ESP_OK)
         {
+        if (dte->send_cmd(dte, "ATE1\r", MODEM_COMMAND_TIMEOUT_DEFAULT) != ESP_OK)
             ESP_LOGE(TAG, "send command failed");
             return ESP_FAIL;
         }

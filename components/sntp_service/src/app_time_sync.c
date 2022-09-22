@@ -90,6 +90,11 @@ void app_time(void)
 {
     time_t now;
     struct tm timeinfo;
+    struct tm last_timeinfo;
+    if ((timeinfo.tm_hour - last_timeinfo.tm_hour) < 1)
+    {
+        return;
+    }
     // need update time before get localtime
     time(&now);
     localtime_r(&now, &timeinfo);

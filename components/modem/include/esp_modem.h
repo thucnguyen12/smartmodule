@@ -77,7 +77,7 @@ typedef esp_err_t (*esp_modem_on_receive)(void *buffer, size_t len, void *contex
  */
 #define ESP_MODEM_DTE_DEFAULT_CONFIG()          \
     {                                           \
-        .port_num = UART_NUM_1,                 \
+        .port_num = UART_NUM_0,                 \
         .data_bits = UART_DATA_8_BITS,          \
         .stop_bits = UART_STOP_BITS_1,          \
         .parity = UART_PARITY_DISABLE,          \
