@@ -40,7 +40,7 @@
 #include "esp_ota_ops.h"
 #include "esp_http_client.h"
 #include "esp_https_ota.h"
-
+#include "app_ota.h"
 
 //tiny usb (for esp32-s2 only)
 #ifdef ESP32_S2
@@ -60,10 +60,11 @@
 #if CONFIG_ETH_USE_SPI_ETHERNET
 #include "driver/spi_master.h"
 #endif // CONFIG_ETH_USE_SPI_ETHERNET
-
+//uart needed
 #include "lwrb.h"
 #include "gpio_defination.h"
-
+#include "min.h"
+#include "min_id.h"
 
 #define BROKER_URL "mqtt://mqtt.eclipseprojects.io:1883"
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_PSK
@@ -98,10 +99,20 @@ modem_dte_t *dte = NULL;
 // static bool network_connected = false;
 // extern const uint8_t server_cert_pem_start[] asm("_binary_ca_cert_pem_start");
 // extern const uint8_t server_cert_pem_end[] asm("_binary_ca_cert_pem_end");
+
 extern QueueHandle_t uart1_queue;
 extern QueueHandle_t uart0_queue;
 lwrb_t data_uart_module_rb;
-char uart_buffer[UART_RINGBUFF_SIZE];
+char min_rx_buffer [UART_RINGBUFF_SIZE];
+char uart_buffer [UART_RINGBUFF_SIZE];
+static min_context_t m_min_context;
+static min_frame_cfg_t m_min_setting = MIN_DEFAULT_CONFIG();
+
+static const min_msg_t ping_min_msg = {
+    .id = MIN_ID_PING_ESP_ALIVE,
+    .len = 0,
+    .payload = NULL
+};
 
 typedef enum
 {
@@ -514,10 +525,11 @@ void change_protocol_using_to (protocol_type protocol)
 void handle_uart_data_task(void)
 {
     uint8_t* data = (uint8_t*)malloc (1024);
-    lwrb_read (&data_uart_module_rb, data, 1024);
-    /*
-        xu li data 
-    */
+    if (lwrb_read (&data_uart_module_rb, data, 10))
+    {
+        min_rx_feed(&min_context_t, min_rx_buffer);
+    }
+    
 }
 
 void send_data_to_gd32 (char *data, uint8_t size)
@@ -525,6 +537,36 @@ void send_data_to_gd32 (char *data, uint8_t size)
 
     uart_write_bytes (UART_NUM_1, (const char*) data, size);
 
+}
+
+uint32_t sys_get_ms(void)
+{
+    return (xTaskGetTickCount() / portTICK_RATE_MS);
+}
+
+void min_rx_callback(void *min_context, min_msg_t *frame)
+{
+    switch (frame->id)
+    {
+    case MIN_ID_RECIEVE_SPI_FROM_GD32:
+        /* code */
+        break;
+    
+    default:
+        break;
+    }
+}
+
+bool min_tx_byte(void *ctx, uint8_t byte)
+{
+	(void)ctx;
+	uart_write_bytes(UART_NUM_1, (const char*) byte, 1);
+	return true;
+}
+
+void send_min_data(min_msg_t *min_msg)
+{
+	min_send_frame(&m_min_context, min_msg);
 }
 
 void app_main(void)
@@ -619,8 +661,18 @@ void app_main(void)
     uart_set_pin(UART_NUM_1, GPIO_TX1, GPIO_RX1, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);//uart for connectivity from esp to gd
     //ESP32 <==> 4G MODULE
     uart_set_pin(UART_NUM_0, GPIO_TX0, GPIO_RX0, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE); //uart for gsm
+
     lwrb_init (&data_uart_module_rb, uart_buffer, UART_RINGBUFF_SIZE); //init lwrb
-                                           
+    m_min_setting.get_ms = sys_get_ms();
+    m_min_setting.last_rx_time = 0x00;
+	m_min_setting.rx_callback = min_rx_callback;
+	m_min_setting.timeout_not_seen_rx = 5000;
+	m_min_setting.tx_byte = min_tx_byte;
+	m_min_setting.use_timeout_method = 1;
+
+    m_min_context.callback = &m_min_setting;
+	m_min_context.rx_frame_payload_buf = min_rx_buffer;
+	min_init_context(&m_min_context);
 #if CONFIG_LWIP_PPP_PAP_SUPPORT
     esp_netif_auth_type_t auth_type = NETIF_PPP_AUTHTYPE_PAP;
 #elif CONFIG_LWIP_PPP_CHAP_SUPPORT
@@ -739,12 +791,22 @@ void app_main(void)
     start mqtt:
     esp_mqtt_client_handle_t mqtt_client = esp_mqtt_client_init(&mqtt_config);
     esp_mqtt_client_start(mqtt_client);
+    static uint32_t now;
+    static uint32_t last_tick_cnt = 0;
     while(1) {
+        now = sys_get_ms();
+        if ((now - last_tick_cnt) > 1000)
+        {
+            send_min_data (&ping_min_msg);
+            last_tick_cnt = now;
+        }
 
 ///********************************* THIS START CODE CHANGED PROTOCOL
 /*
     REGISTER TOPIC
 */
+
+
         if (protocol_using != WIFI_PROTOCOL)
         {
             app_wifi_connect (wifi_name, wifi_pass);
@@ -808,7 +870,7 @@ void app_main(void)
             while (1)
             {
                 
-                EventBits_t uxBits = xEventGroupWaitBits(event_group, MQTT_DIS_CONNECT_BIT, pdTRUE, pdTRUE, 10); // piority check disconnected event
+                EventBits_t uxBits = xEventGroupWaitBits(event_group, MQTT_DIS_CONNECT_BIT, pdTRUE, pdTRUE, 10/ portTICK_RATE_MS); // piority check disconnected event
                 if ( (uxBits & MQTT_DIS_CONNECT_BIT) == MQTT_DIS_CONNECT_BIT)
                 {
                     ESP_LOGI (TAG, "mqtt disconnected bitrev");
@@ -821,7 +883,7 @@ void app_main(void)
                 }
                 app_time();
                 //xEventGroupWaitBits(event_group, GOT_DATA_BIT, pdTRUE, pdTRUE, 1000 / portTICK_RATE_MS);
-                ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 100); // We maybe 
+                ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 100/ portTICK_RATE_MS); // We maybe 
                 if (ubits & WAIT_BIT)
                 {
                     xTaskCreate(&advanced_ota_example_task, "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
@@ -852,7 +914,7 @@ void app_main(void)
                     break;
                 }
                 xEventGroupWaitBits(event_group, GOT_DATA_BIT, pdTRUE, pdTRUE, 1000 / portTICK_RATE_MS);
-                ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 100);
+                ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 100/ portTICK_RATE_MS);
                 if (ubits & WAIT_BIT)
                 {
                     xTaskCreate(&advanced_ota_example_task, "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
@@ -891,7 +953,7 @@ void app_main(void)
                     break;
                 }
                 xEventGroupWaitBits(event_group, GOT_DATA_BIT, pdTRUE, pdTRUE, 1000 / portTICK_RATE_MS);
-                ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 100);
+                ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 100/ portTICK_RATE_MS);
                 if (ubits & WAIT_BIT)
                 {
                     xTaskCreate(&advanced_ota_example_task, "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
