@@ -549,7 +549,7 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
     switch (frame->id)
     {
     case MIN_ID_RECIEVE_SPI_FROM_GD32:
-        /* code */
+        
         break;
     
     default:
@@ -568,6 +568,14 @@ void send_min_data(min_msg_t *min_msg)
 {
 	min_send_frame(&m_min_context, min_msg);
 }
+
+void build_min_tx_data_from_spi(min_msg_t* min_msg, uint8_t* data_spi, uint8_t size)
+{
+    min_msg->id = MIN_ID_RECIEVE_SPI_FROM_GD32;
+    memcpy (min_msg->payload, data_spi, size);
+    min_msg->len = size;
+}
+
 
 void app_main(void)
 {
@@ -794,11 +802,19 @@ void app_main(void)
     static uint32_t now;
     static uint32_t last_tick_cnt = 0;
     while(1) {
+        CHECK_ERROR_CODE(esp_task_wdt_reset(), ESP_OK);
         now = sys_get_ms();
         if ((now - last_tick_cnt) > 1000)
         {
             send_min_data (&ping_min_msg);
             last_tick_cnt = now;
+        }
+
+        if (1)//khi can gui du lieu qua spi
+        {
+           min_msg_t min_msg_data_buff;
+           build_min_tx_data_from_spi(&min_msg_data_buff, "hello", 5);//test 
+           send_min_data (&min_msg_data_buff);
         }
 
 ///********************************* THIS START CODE CHANGED PROTOCOL
