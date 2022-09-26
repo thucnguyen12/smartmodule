@@ -60,11 +60,14 @@
 #if CONFIG_ETH_USE_SPI_ETHERNET
 #include "driver/spi_master.h"
 #endif // CONFIG_ETH_USE_SPI_ETHERNET
-//uart needed
+// uart needed
 #include "lwrb.h"
 #include "gpio_defination.h"
 #include "min.h"
 #include "min_id.h"
+//http request
+#include "http_request.h"
+
 
 #define BROKER_URL "mqtt://mqtt.eclipseprojects.io:1883"
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_PSK
@@ -123,6 +126,9 @@ typedef enum
 protocol_type protocol_using = DEFAULT_PROTOCOL;
 static char* wifi_name = CONFIG_ESP_WIFI_SSID;
 static char* wifi_pass = CONFIG_ESP_WIFI_PASSWORD;
+
+extern char recv_buf[64];
+
 void device_reboot(uint8_t reason)
 {
     (void)reason;
@@ -576,6 +582,51 @@ void build_min_tx_data_from_spi(min_msg_t* min_msg, uint8_t* data_spi, uint8_t s
     min_msg->len = size;
 }
 
+void deinit_interface (protocol_type protocol)
+{
+    switch (expression)
+    {
+    case WIFI_PROTOCOL:
+            esp_mqtt_client_destroy(mqtt_client);
+            ESP_LOGI(TAG, "destroy mqtt");
+            esp_wifi_stop();
+        break;
+    case ETHERNET_PROTOCOL:
+            esp_mqtt_client_destroy(mqtt_client);
+            ESP_ERROR_CHECK(esp_eth_stop(eth_handle));
+            ESP_LOGI(TAG, "destroy mqtt");
+        break;
+    case GSM_4G_PROTOCOL:
+            esp_mqtt_client_destroy(mqtt_client);
+            ESP_LOGI(TAG, "destroy mqtt");
+            /* Exit PPP mode */
+            ESP_ERROR_CHECK(esp_modem_stop_ppp(dte));
+            ESP_LOGI(TAG, "ppp stop");
+            xEventGroupWaitBits(event_group, STOP_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
+#if CONFIG_EXAMPLE_SEND_MSG
+            const char *message = "Welcome to ESP32!";
+            ESP_ERROR_CHECK(example_send_message_text(dce, CONFIG_EXAMPLE_SEND_MSG_PEER_PHONE_NUMBER, message));
+            ESP_LOGI(TAG, "Send send message [%s] ok", message);
+#endif
+            /* Power down module */
+            ESP_ERROR_CHECK(dce->power_down(dce));
+            ESP_LOGI(TAG, "Power down");
+            ESP_ERROR_CHECK(dce->deinit(dce)); //deinit
+            if (esp_modem_netif_clear_default_handlers(modem_netif_adapter) == ESP_OK)
+            {
+                ESP_LOGI ("UNREGISTER", "CLEAR TO REINIT");
+            }
+            esp_modem_netif_teardown(modem_netif_adapter);
+            esp_netif_destroy(esp_netif);
+            ESP_LOGI ("UNREGISTER", "CLEAR TO REINIT");
+        break;
+    default:
+        ESP_LOGE (TAG, "UNHANDLABLE PROTOCOL DEINIT");
+        break;
+    }
+}
+
+
 
 void app_main(void)
 {
@@ -701,8 +752,8 @@ void app_main(void)
     esp_modem_dte_config_t dte_config = ESP_MODEM_DTE_DEFAULT_CONFIG();
     /* setup UART specific configuration based on kconfig options */
 
-    dte_config.tx_io_num = GPIO_TX0;
-    dte_config.rx_io_num = GPIO_TX1;
+    dte_config.tx_io_num = GPIO_TX1;
+    dte_config.rx_io_num = GPIO_RX1;
     dte_config.rts_io_num = 0;
     dte_config.cts_io_num = 0;
     dte_config.rx_buffer_size = CONFIG_EXAMPLE_MODEM_UART_RX_BUFFER_SIZE;
@@ -739,7 +790,7 @@ void app_main(void)
     esp_mqtt_client_config_t mqtt_config = {
         .uri = BROKER_URL,
         .username = "mqtt",
-        .password = "Thucanh!@", 
+        .password = "Thucanh!@",
         .event_handle = mqtt_event_handler,
     };
     EventBits_t ubits;
@@ -804,8 +855,9 @@ void app_main(void)
     while(1) {
         CHECK_ERROR_CODE(esp_task_wdt_reset(), ESP_OK);
         now = sys_get_ms();
-        if ((now - last_tick_cnt) > 1000)
+        if ((now - last_tick_cnt) > 100)
         {
+            // ping gd32 while being alive
             send_min_data (&ping_min_msg);
             last_tick_cnt = now;
         }
@@ -821,8 +873,6 @@ void app_main(void)
 /*
     REGISTER TOPIC
 */
-
-
         if (protocol_using != WIFI_PROTOCOL)
         {
             app_wifi_connect (wifi_name, wifi_pass);
@@ -891,7 +941,6 @@ void app_main(void)
                 {
                     ESP_LOGI (TAG, "mqtt disconnected bitrev");
                     // network_connected = false;
-
                     change_protocol_using_to (ETHERNET_PROTOCOL);
                     //app_time();
                     vTaskDelay(500 / portTICK_PERIOD_MS);
@@ -908,9 +957,10 @@ void app_main(void)
                 /* this space for functions */
                 handle_uart_data_task();
             }
-            esp_mqtt_client_destroy(mqtt_client);
-            ESP_LOGI(TAG, "destroy mqtt");
-            //esp_wifi_stop();
+//            deinit_interface (protocol_using);
+//            esp_mqtt_client_destroy(mqtt_client);
+//            ESP_LOGI(TAG, "destroy mqtt");
+//            esp_wifi_stop(); 
             break;
         case ETHERNET_PROTOCOL:
             ESP_ERROR_CHECK(esp_eth_start(eth_handle));
@@ -990,7 +1040,7 @@ void app_main(void)
             /* Power down module */
             ESP_ERROR_CHECK(dce->power_down(dce));
             ESP_LOGI(TAG, "Power down");
-            ESP_ERROR_CHECK(dce->deinit(dce));
+            ESP_ERROR_CHECK(dce->deinit(dce)); //deinit
             if (esp_modem_netif_clear_default_handlers(modem_netif_adapter) == ESP_OK)
             {
                 ESP_LOGI ("UNREGISTER", "CLEAR TO REINIT");
@@ -1003,13 +1053,44 @@ void app_main(void)
             ESP_LOGE(TAG, "this would like to never reach");
             break;
         }
+        // wait connected then we listen to mqtt sever
+
+        // get mqtt server from http request
+        xTaskCreate(&http_get_task, "http_get_task", 4096, NULL, 5, NULL);
+        // we modulized connect event
+        mqtt_client = esp_mqtt_client_init(&mqtt_config);
+        esp_mqtt_client_start(mqtt_client);
+        //register topic
+        while (1)
+        {
+            EventBits_t uxBits = xEventGroupWaitBits(event_group, MQTT_DIS_CONNECT_BIT, pdTRUE, pdTRUE, 10/ portTICK_RATE_MS); // piority check disconnected event
+            if ( (uxBits & MQTT_DIS_CONNECT_BIT) == MQTT_DIS_CONNECT_BIT)
+            {
+                ESP_LOGI (TAG, "mqtt disconnected bitrev");
+                // network_connected = false;
+                change_protocol_using_to (ETHERNET_PROTOCOL);
+                //app_time();
+                vTaskDelay(500 / portTICK_PERIOD_MS);
+                break;
+            }
+            app_time();
+            //xEventGroupWaitBits(event_group, GOT_DATA_BIT, pdTRUE, pdTRUE, 1000 / portTICK_RATE_MS);
+            ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 100/ portTICK_RATE_MS); // We maybe 
+            if (ubits & WAIT_BIT)
+            {
+                xTaskCreate(&advanced_ota_example_task, "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
+            }
+
+            /* this space for functions */
+            handle_uart_data_task();
+        }
+        deinit_interface (protocol_using);
         //do cmd nghiep vu
         /*
             can check li do reset mem     
         */
-
     }
-    ESP_ERROR_CHECK(dte->deinit(dte));
+//    ESP_ERROR_CHECK(dte->deinit(dte));
 }
 
 

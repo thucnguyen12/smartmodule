@@ -48,7 +48,7 @@ void uart_event_task(void *pvParameters)
                     //ESP_LOGI(TAG, "[UART DATA]: %d", event.size);
                     uart_read_bytes(UART_NUM_1, dtmp, event.size, portMAX_DELAY);
                     //uart_read_bytes(UART_NUM_1, data_uart_module_rb_ptr->buff, event.size, portMAX_DELAY); // 
-                    lwrb_write (data_uart_module_rb_ptr, dtmp, event.size); //write data to ringbuff
+                    //lwrb_write (data_uart_module_rb_ptr, dtmp, event.size); //write data to ringbuff
                     ESP_LOGI(TAG, "[DATA EVT]:");
                     //uart_write_bytes(UART_NUM_1, (const char*) dtmp, event.size); //no need echo
 
@@ -119,8 +119,9 @@ void uart_event_task(void *pvParameters)
                 case UART_DATA:
                     //ESP_LOGI(TAG, "[UART DATA]: %d", event.size);
                     uart_read_bytes(UART_NUM_0, dtmp, event.size, portMAX_DELAY);
-                    ESP_LOGI(TAG, "[DATA EVT]:");
-                    uart_write_bytes(UART_NUM_0, (const char*) dtmp, event.size);
+                    ESP_LOGI(TAG, "[UART0 DATA EVT]:");
+                    lwrb_write (data_uart_module_rb_ptr, dtmp, event.size); //write data to ringbuff
+                    //uart_write_bytes(UART_NUM_0, (const char*) dtmp, event.size);
                     break;
                 //Event of HW FIFO overflow detected
                 case UART_FIFO_OVF:

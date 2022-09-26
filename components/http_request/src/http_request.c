@@ -31,7 +31,9 @@ static const char *REQUEST = "GET " WEB_PATH " HTTP/1.0\r\n"
     "User-Agent: esp-idf/1.0 esp32\r\n"
     "\r\n";
 
-static void http_get_task(void *pvParameters)
+char recv_buf[64];
+
+void http_get_task(void *pvParameters)
 {
     const struct addrinfo hints = {
         .ai_family = AF_INET,
@@ -40,7 +42,7 @@ static void http_get_task(void *pvParameters)
     struct addrinfo *res;
     struct in_addr *addr;
     int s, r;
-    char recv_buf[64];
+    
 
     while(1) {
         int err = getaddrinfo(WEB_SERVER, WEB_PORT, &hints, &res);
@@ -111,6 +113,7 @@ static void http_get_task(void *pvParameters)
         for(int countdown = 10; countdown >= 0; countdown--) {
             ESP_LOGI(TAG, "%d... ", countdown);
             vTaskDelay(1000 / portTICK_PERIOD_MS);
+            // maybe we need vTaskDelete(); here!!!!
         }
         ESP_LOGI(TAG, "Starting again!");
     }

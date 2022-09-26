@@ -100,4 +100,12 @@ typedef enum
     OTA_HEADER
 } header_type_t;
 
+typedef struct app_mqtt_msg
+{
+    header_type_t header;
+    char *payload;
+};
+
+
+
 #endif
