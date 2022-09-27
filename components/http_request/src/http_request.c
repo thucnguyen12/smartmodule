@@ -32,6 +32,7 @@ static const char *REQUEST = "GET " WEB_PATH " HTTP/1.0\r\n"
     "\r\n";
 
 char recv_buf[64];
+extern QueueHandle_t mqtt_info_queue;
 
 void http_get_task(void *pvParameters)
 {
@@ -107,7 +108,7 @@ void http_get_task(void *pvParameters)
                 putchar(recv_buf[i]);
             }
         } while(r > 0);
-
+        xQueueSend (mqtt_info_queue, recv_buf, 1000);
         ESP_LOGI(TAG, "... done reading from socket. Last read return=%d errno=%d.", r, errno);
         close(s);
         for(int countdown = 10; countdown >= 0; countdown--) {
@@ -115,6 +116,8 @@ void http_get_task(void *pvParameters)
             vTaskDelay(1000 / portTICK_PERIOD_MS);
             // maybe we need vTaskDelete(); here!!!!
         }
-        ESP_LOGI(TAG, "Starting again!");
+        ESP_LOGI(TAG, "DELETE TASK AFTER GET MQTT INFO!");
+        vTaskDelete(NULL);
     }
+
 }

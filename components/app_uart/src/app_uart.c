@@ -20,12 +20,17 @@
 #include <string.h>
 #include "app_uart.h"
 #include "lwrb.h"
+#include "min.h"
+#include "min_id.h"
 
 static const char *TAG = "app_uart";
 QueueHandle_t uart1_queue;
 QueueHandle_t uart0_queue;
 extern lwrb_t data_uart_module_rb;
 static lwrb_t* data_uart_module_rb_ptr = &data_uart_module_rb;
+
+extern min_context_t m_min_context;
+
 
 void uart_event_task(void *pvParameters)
 {
@@ -121,6 +126,7 @@ void uart_event_task(void *pvParameters)
                     uart_read_bytes(UART_NUM_0, dtmp, event.size, portMAX_DELAY);
                     ESP_LOGI(TAG, "[UART0 DATA EVT]:");
                     lwrb_write (data_uart_module_rb_ptr, dtmp, event.size); //write data to ringbuff
+                    min_rx_feed(&m_min_context, dtmp);
                     //uart_write_bytes(UART_NUM_0, (const char*) dtmp, event.size);
                     break;
                 //Event of HW FIFO overflow detected
@@ -179,6 +185,7 @@ void uart_event_task(void *pvParameters)
         }
     }
     free(dtmp);
+    free(dtmp_uart0);
     dtmp = NULL;
     vTaskDelete(NULL);
 }

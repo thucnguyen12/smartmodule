@@ -105,10 +105,12 @@ modem_dte_t *dte = NULL;
 
 extern QueueHandle_t uart1_queue;
 extern QueueHandle_t uart0_queue;
+QueueHandle_t mqtt_info_queue;
+
 lwrb_t data_uart_module_rb;
 char min_rx_buffer [UART_RINGBUFF_SIZE];
 char uart_buffer [UART_RINGBUFF_SIZE];
-static min_context_t m_min_context;
+min_context_t m_min_context;
 static min_frame_cfg_t m_min_setting = MIN_DEFAULT_CONFIG();
 
 static const min_msg_t ping_min_msg = {
@@ -533,16 +535,9 @@ void handle_uart_data_task(void)
     uint8_t* data = (uint8_t*)malloc (1024);
     if (lwrb_read (&data_uart_module_rb, data, 10))
     {
-        min_rx_feed(&min_context_t, min_rx_buffer);
+        min_rx_feed(&m_min_context, min_rx_buffer);
     }
-    
-}
-
-void send_data_to_gd32 (char *data, uint8_t size)
-{
-
-    uart_write_bytes (UART_NUM_1, (const char*) data, size);
-
+    free(data);
 }
 
 uint32_t sys_get_ms(void)
@@ -575,7 +570,7 @@ void send_min_data(min_msg_t *min_msg)
 	min_send_frame(&m_min_context, min_msg);
 }
 
-void build_min_tx_data_from_spi(min_msg_t* min_msg, uint8_t* data_spi, uint8_t size)
+void build_min_tx_data_for_spi(min_msg_t* min_msg, uint8_t* data_spi, uint8_t size)
 {
     min_msg->id = MIN_ID_RECIEVE_SPI_FROM_GD32;
     memcpy (min_msg->payload, data_spi, size);
@@ -713,8 +708,8 @@ void app_main(void)
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .source_clk = UART_SCLK_APB,
         };
-    uart_driver_install(UART_NUM_1, BUF_SIZE * 2, BUF_SIZE * 2, 20, &uart1_queue, 0);
-    uart_driver_install(UART_NUM_0, BUF_SIZE * 2, BUF_SIZE * 2, 20, &uart0_queue, 0);
+    uart_driver_install(UART_NUM_1, BUF_SIZE * 2, BUF_SIZE * 2, 512, &uart1_queue, 0);
+    uart_driver_install(UART_NUM_0, BUF_SIZE * 2, BUF_SIZE * 2, 512, &uart0_queue, 0);
     uart_param_config(UART_NUM_1, &uart_config);
     uart_param_config(UART_NUM_0, &uart_config);        
     uart_set_pin(UART_NUM_1, GPIO_TX1, GPIO_RX1, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);//uart for connectivity from esp to gd
@@ -786,13 +781,7 @@ void app_main(void)
         protocol_using = WIFI_PROTOCOL;
         continue;
     }
-    /* Config MQTT */
-    esp_mqtt_client_config_t mqtt_config = {
-        .uri = BROKER_URL,
-        .username = "mqtt",
-        .password = "Thucanh!@",
-        .event_handle = mqtt_event_handler,
-    };
+    
     EventBits_t ubits;
 
     // ETHERNET INIT Emac
@@ -814,7 +803,7 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_eth_driver_install(&config, &eth_handle));
     /* attach Ethernet driver to TCP/IP stack */
     ESP_ERROR_CHECK(esp_netif_attach(eth_netif, esp_eth_new_netif_glue(eth_handle)));
-    // end ethermet
+    // end ethernet
     ESP_ERROR_CHECK(esp_eth_start(eth_handle)); //start ethenet 
 
     /* Register event handler */
@@ -847,28 +836,16 @@ void app_main(void)
         ESP_LOGI (TAG, "PING UNEXPECTED EVENT");
     }
 
-    start mqtt:
+    start_mqtt:
     esp_mqtt_client_handle_t mqtt_client = esp_mqtt_client_init(&mqtt_config);
     esp_mqtt_client_start(mqtt_client);
+
+    mqtt_info_queue = xQueueCreate(64, sizeof (char));
+
     static uint32_t now;
     static uint32_t last_tick_cnt = 0;
     while(1) {
         CHECK_ERROR_CODE(esp_task_wdt_reset(), ESP_OK);
-        now = sys_get_ms();
-        if ((now - last_tick_cnt) > 100)
-        {
-            // ping gd32 while being alive
-            send_min_data (&ping_min_msg);
-            last_tick_cnt = now;
-        }
-
-        if (1)//khi can gui du lieu qua spi
-        {
-           min_msg_t min_msg_data_buff;
-           build_min_tx_data_from_spi(&min_msg_data_buff, "hello", 5);//test 
-           send_min_data (&min_msg_data_buff);
-        }
-
 ///********************************* THIS START CODE CHANGED PROTOCOL
 /*
     REGISTER TOPIC
@@ -921,7 +898,7 @@ void app_main(void)
             {
                 ESP_LOGI (TAG, "PING TIMEOUT, RETRY WITH ETH");
                 change_protocol_using_to (ETHERNET_PROTOCOL);
-                break;
+                continue;
             }
             else if (uxBitsPing & WIFI_PING_SUCESS)
             {
@@ -931,67 +908,9 @@ void app_main(void)
             {
                 ESP_LOGI (TAG, "PING UNEXPECTED EVENT");
             }
-            mqtt_client = esp_mqtt_client_init(&mqtt_config);
-            esp_mqtt_client_start(mqtt_client);
-            while (1)
-            {
-                
-                EventBits_t uxBits = xEventGroupWaitBits(event_group, MQTT_DIS_CONNECT_BIT, pdTRUE, pdTRUE, 10/ portTICK_RATE_MS); // piority check disconnected event
-                if ( (uxBits & MQTT_DIS_CONNECT_BIT) == MQTT_DIS_CONNECT_BIT)
-                {
-                    ESP_LOGI (TAG, "mqtt disconnected bitrev");
-                    // network_connected = false;
-                    change_protocol_using_to (ETHERNET_PROTOCOL);
-                    //app_time();
-                    vTaskDelay(500 / portTICK_PERIOD_MS);
-                    break;
-                }
-                app_time();
-                //xEventGroupWaitBits(event_group, GOT_DATA_BIT, pdTRUE, pdTRUE, 1000 / portTICK_RATE_MS);
-                ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 100/ portTICK_RATE_MS); // We maybe 
-                if (ubits & WAIT_BIT)
-                {
-                    xTaskCreate(&advanced_ota_example_task, "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
-                }
-
-                /* this space for functions */
-                handle_uart_data_task();
-            }
-//            deinit_interface (protocol_using);
-//            esp_mqtt_client_destroy(mqtt_client);
-//            ESP_LOGI(TAG, "destroy mqtt");
-//            esp_wifi_stop(); 
             break;
         case ETHERNET_PROTOCOL:
-            ESP_ERROR_CHECK(esp_eth_start(eth_handle));
-
-            xEventGroupWaitBits(event_group, CONNECT_BIT, pdTRUE, pdTRUE, portMAX_DELAY); // wait ip address need fix when it is fail forever    
-            mqtt_client = esp_mqtt_client_init(&mqtt_config);
-            esp_mqtt_client_start(mqtt_client);
-            while (1)
-            {
-                EventBits_t uxBits = xEventGroupWaitBits(event_group, MQTT_DIS_CONNECT_BIT, pdTRUE, pdTRUE, 10);
-                if ( (uxBits & MQTT_DIS_CONNECT_BIT) == MQTT_DIS_CONNECT_BIT)
-                {
-                    ESP_LOGI (TAG, "mqtt disconnected bit rev");
-                    
-                    //protocol_using = WIFI_PROTOCOL;
-                    change_protocol_using_to (GSM_4G_PROTOCOL);
-                    break;
-                }
-                xEventGroupWaitBits(event_group, GOT_DATA_BIT, pdTRUE, pdTRUE, 1000 / portTICK_RATE_MS);
-                ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 100/ portTICK_RATE_MS);
-                if (ubits & WAIT_BIT)
-                {
-                    xTaskCreate(&advanced_ota_example_task, "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
-                }
-                /* this space for functions if there no disconnect or ota event */
-
-            }
-            esp_mqtt_client_destroy(mqtt_client);
-            ESP_ERROR_CHECK(esp_eth_stop(eth_handle));
-            ESP_LOGI(TAG, "destroy mqtt");
-        
+            ESP_ERROR_CHECK(esp_eth_start(eth_handle));    
         break;
         case GSM_4G_PROTOCOL:
             dce = NULL;
@@ -1004,50 +923,6 @@ void app_main(void)
                 continue;
             }
             xEventGroupWaitBits(event_group, CONNECT_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
-
-            esp_mqtt_client_handle_t mqtt_client = esp_mqtt_client_init(&mqtt_config);
-            esp_mqtt_client_start(mqtt_client);
-            while (1)
-            {
-                EventBits_t uxBits = xEventGroupWaitBits(event_group, MQTT_DIS_CONNECT_BIT, pdTRUE, pdTRUE, 10);
-                if ( (uxBits & MQTT_DIS_CONNECT_BIT) == MQTT_DIS_CONNECT_BIT)
-                {
-                    ESP_LOGI (TAG, "mqtt disconnected bit rev");
-                    // network_connected = false;
-                    //protocol_using = WIFI_PROTOCOL;
-                    change_protocol_using_to (WIFI_PROTOCOL);
-                    break;
-                }
-                xEventGroupWaitBits(event_group, GOT_DATA_BIT, pdTRUE, pdTRUE, 1000 / portTICK_RATE_MS);
-                ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 100/ portTICK_RATE_MS);
-                if (ubits & WAIT_BIT)
-                {
-                    xTaskCreate(&advanced_ota_example_task, "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
-                }
-                /*THIS SPACE FOR FUNCTION*/
-            }
-            esp_mqtt_client_destroy(mqtt_client);
-            ESP_LOGI(TAG, "destroy mqtt");
-            /* Exit PPP mode */
-            ESP_ERROR_CHECK(esp_modem_stop_ppp(dte));
-            ESP_LOGI(TAG, "ppp stop");
-            xEventGroupWaitBits(event_group, STOP_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
-#if CONFIG_EXAMPLE_SEND_MSG
-            const char *message = "Welcome to ESP32!";
-            ESP_ERROR_CHECK(example_send_message_text(dce, CONFIG_EXAMPLE_SEND_MSG_PEER_PHONE_NUMBER, message));
-            ESP_LOGI(TAG, "Send send message [%s] ok", message);
-#endif
-            /* Power down module */
-            ESP_ERROR_CHECK(dce->power_down(dce));
-            ESP_LOGI(TAG, "Power down");
-            ESP_ERROR_CHECK(dce->deinit(dce)); //deinit
-            if (esp_modem_netif_clear_default_handlers(modem_netif_adapter) == ESP_OK)
-            {
-                ESP_LOGI ("UNREGISTER", "CLEAR TO REINIT");
-            }
-            esp_modem_netif_teardown(modem_netif_adapter);
-            esp_netif_destroy(esp_netif);
-            ESP_LOGI ("UNREGISTER", "CLEAR TO REINIT");
         break;
         default:
             ESP_LOGE(TAG, "this would like to never reach");
@@ -1057,33 +932,63 @@ void app_main(void)
 
         // get mqtt server from http request
         xTaskCreate(&http_get_task, "http_get_task", 4096, NULL, 5, NULL);
+
+        //NEED RECIEVE QUEUE ABOUT SERVER INFO
+        char mqtt_broker_str [64];
+        xQueueReceive (mqtt_info_queue, mqtt_broker_str, 2000/ portTICK_RATE_MS)
+        /* Config MQTT */
+        esp_mqtt_client_config_t mqtt_config = {
+        .uri = mqtt_broker_str,
+        .username = "mqtt",
+        .password = "Thucanh!@",
+        .event_handle = mqtt_event_handler,
+    };
+
         // we modulized connect event
         mqtt_client = esp_mqtt_client_init(&mqtt_config);
         esp_mqtt_client_start(mqtt_client);
         //register topic
-        while (1)
+        
+        while (1) //main process loop
         {
-            EventBits_t uxBits = xEventGroupWaitBits(event_group, MQTT_DIS_CONNECT_BIT, pdTRUE, pdTRUE, 10/ portTICK_RATE_MS); // piority check disconnected event
+            CHECK_ERROR_CODE(esp_task_wdt_reset(), ESP_OK);
+            EventBits_t uxBits = xEventGroupWaitBits(event_group, MQTT_DIS_CONNECT_BIT, pdTRUE, pdTRUE, 5/ portTICK_RATE_MS); // piority check disconnected event
             if ( (uxBits & MQTT_DIS_CONNECT_BIT) == MQTT_DIS_CONNECT_BIT)
             {
                 ESP_LOGI (TAG, "mqtt disconnected bitrev");
                 // network_connected = false;
                 change_protocol_using_to (ETHERNET_PROTOCOL);
                 //app_time();
-                vTaskDelay(500 / portTICK_PERIOD_MS);
+                vTaskDelay(5 / portTICK_PERIOD_MS);
                 break;
             }
             app_time();
             //xEventGroupWaitBits(event_group, GOT_DATA_BIT, pdTRUE, pdTRUE, 1000 / portTICK_RATE_MS);
-            ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 100/ portTICK_RATE_MS); // We maybe 
+            ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 5/ portTICK_RATE_MS); // We maybe 
             if (ubits & WAIT_BIT)
             {
                 xTaskCreate(&advanced_ota_example_task, "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
             }
 
             /* this space for functions */
+            now = sys_get_ms();
+            if ((now - last_tick_cnt) > 100)
+            {
+                // ping gd32 while being alive
+                send_min_data (&ping_min_msg);
+                last_tick_cnt = now;
+            }
+            //can lay du lieu tu spi (doc tu gd32 qua uart) roi xu li
+
+            if (1)//khi can gui du lieu qua spi
+            {
+                min_msg_t min_msg_data_buff;
+                build_min_tx_data_for_spi(&min_msg_data_buff, "hello", 5);//test 
+                send_min_data (&min_msg_data_buff);
+            }
             handle_uart_data_task();
         }
+        //deinit after get out of loop to reinit in new loop
         deinit_interface (protocol_using);
         //do cmd nghiep vu
         /*
