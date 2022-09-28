@@ -376,11 +376,16 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
             ESP_LOGI(TAG, "set bit update");
             //=>> can check bit
         }
-        if ((strstr (event->topic, "/update")) && strstr (event->data, "test exit"))
+        if ((strstr (event->topic, "/g2d/ota")) && strstr (event->data, "test exit"))
         {
             xEventGroupSetBits(event_group, MQTT_DIS_CONNECT_BIT);
             ESP_LOGI(TAG, "set bit disconnect");
             //=>> can test disconnect func  
+        }
+
+        if (strstr (event->topic, "/g2d/config/"))
+        {
+            // lưu lại
         }
 
         break;
@@ -935,7 +940,10 @@ void app_main(void)
 
         //NEED RECIEVE QUEUE ABOUT SERVER INFO
         char mqtt_broker_str [64];
-        xQueueReceive (mqtt_info_queue, mqtt_broker_str, 2000/ portTICK_RATE_MS)
+        if (xQueueReceive (mqtt_info_queue, mqtt_broker_str, 20000/ portTICK_RATE_MS) == pdFALSE)
+        {
+            esp_restart();
+        }
         /* Config MQTT */
         esp_mqtt_client_config_t mqtt_config = {
         .uri = mqtt_broker_str,
@@ -986,7 +994,7 @@ void app_main(void)
                 build_min_tx_data_for_spi(&min_msg_data_buff, "hello", 5);//test 
                 send_min_data (&min_msg_data_buff);
             }
-            handle_uart_data_task();
+            // handle_uart_data_task();
         }
         //deinit after get out of loop to reinit in new loop
         deinit_interface (protocol_using);

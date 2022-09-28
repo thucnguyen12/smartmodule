@@ -1,7 +1,7 @@
 #ifndef APP_MQTT_T
 #define APP_MQTT_T
 
-
+#include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include "uthash.h"
@@ -34,7 +34,8 @@ typedef struct
     bool inTestmode;
 } __attribute__((packed)) fire_status_t;
 
-typedef 
+typedef struct 
+
 {
     int fire_status;
     int csq;
@@ -44,11 +45,11 @@ typedef
     bool inTestmode;
 }__attribute__((packed)) fire_safe_t;
 
-typedef 
+typedef struct 
 {
     char imei[20];
     char simIMEI[20];
-    int firmware;
+    char firmware[20];
     char loginReson[10];
     int hardwareVersion;
     int updateTime;
@@ -56,7 +57,19 @@ typedef
     char ExpHwVersion[10];
 }__attribute__((packed)) info_device_t;
 
-typedef 
+typedef struct 
+{
+    char mac[20];
+    char firmware[20];
+    int status;
+    int battery;
+    int temperature;
+    int smoke;
+    int updateTime;
+}__attribute__((packed)) sensor_info_t;
+
+
+typedef struct 
 {
     char topic_hr [20];
     char mqtt_add [20];
@@ -75,6 +88,7 @@ typedef
     int smokeSensorThresHole;
     int tempSensorWakeupInterval;
     int tempSensorHeartbeatInterval;
+    int tempThresHold;
     char httpDnsName [15];
     char httpUsername [15];
     char httpDnsPass [15];
@@ -105,7 +119,5 @@ typedef struct app_mqtt_msg
     header_type_t header;
     char *payload;
 };
-
-
 
 #endif
