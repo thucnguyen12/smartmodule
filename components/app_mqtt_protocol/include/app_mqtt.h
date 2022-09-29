@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include "uthash.h"
+//#include "uthash.h"
 
 typedef union
 {
@@ -25,7 +25,7 @@ typedef struct
     int fire_status;
     int csq;
     int sensor_cnt;
-    int batery;
+    int battery;
     int updateTime;
     char networkInterface[12];
     int temper;
@@ -40,7 +40,7 @@ typedef struct
     int fire_status;
     int csq;
     int sensor_cnt;
-    int batery;
+    int battery;
     int updateTime;
     bool inTestmode;
 }__attribute__((packed)) fire_safe_t;
@@ -99,6 +99,7 @@ typedef struct
     int reset;
     char pingMainServer[15];
     char pingBackupServer [15];
+    int inputActiveLevel;
     int zoneMinMv;
     int zoneMaxMv;
     int zoneDelay;
@@ -114,10 +115,10 @@ typedef enum
     OTA_HEADER
 } header_type_t;
 
-typedef struct app_mqtt_msg
+typedef struct 
 {
     header_type_t header;
     char *payload;
-};
+} app_mqtt_msg_t;
 
 #endif

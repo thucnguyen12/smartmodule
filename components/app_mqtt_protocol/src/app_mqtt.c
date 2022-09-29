@@ -93,8 +93,8 @@ void make_device_info_payload (info_device_t device, char * str_out)
     index = sprintf (str_out + index, "\"simIMEI\":%s\r\n", device.simIMEI);
     index = sprintf (str_out + index, "\"firmware\":%s\r\n", device.firmware);
     index = sprintf (str_out + index, "\"loginReason\":%s\r\n", device.loginReson);
-    index = sprintf (str_out + index, "\"hardwareVersion\":%s\r\n", device.hardwareVersion);
-    index = sprintf (str_out + index, "\"updateTime\":%s\r\n", device.updateTime);
+    index = sprintf (str_out + index, "\"hardwareVersion\":%d\r\n", device.hardwareVersion);
+    index = sprintf (str_out + index, "\"updateTime\":%d\r\n", device.updateTime);
     index = sprintf (str_out + index, "\"ExpFwVersion\":%s\r\n", device.ExpFwVersion);
     index = sprintf (str_out + index, "\"ExpHwVersion\":%s\r\n}", device.ExpHwVersion);
 }

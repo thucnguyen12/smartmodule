@@ -6,10 +6,11 @@ set(srcs "src/esp_modem.c"
         "src/sim7600.c"
         "src/bg96.c"
         "src/ec600s.c"
-        "src/app_wifi.c"
         "src/hw_power.c"
-        "src/gsm_ultilities.c")
-
+        "src/gsm_ultilities.c"
+        "src/ec2x.c"
+        "src/gsm_hardware.c")
+        
 idf_component_register(SRCS "${srcs}"
                     INCLUDE_DIRS include
                     REQUIRES driver nvs_flash)

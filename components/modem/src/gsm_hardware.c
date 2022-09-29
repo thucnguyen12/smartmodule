@@ -6,7 +6,7 @@
 
 #define TAG "gsm_hw"
 
-
+/*
 static IRAM_ATTR void ri_isr_callback(void *arg)
 {
     static uint32_t m_high_to_low_timestamp = 0;
@@ -29,6 +29,7 @@ static IRAM_ATTR void ri_isr_callback(void *arg)
 	   m_high_to_low_timestamp = 0;
 	}
 }
+*/
 
 void gsm_hardware_initialize(void)
 {

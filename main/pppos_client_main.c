@@ -67,6 +67,8 @@
 #include "min_id.h"
 //http request
 #include "http_request.h"
+//sync timer
+#include "app_time_sync.h"
 
 
 #define BROKER_URL "mqtt://mqtt.eclipseprojects.io:1883"
@@ -108,7 +110,7 @@ extern QueueHandle_t uart0_queue;
 QueueHandle_t mqtt_info_queue;
 
 lwrb_t data_uart_module_rb;
-char min_rx_buffer [UART_RINGBUFF_SIZE];
+uint8_t min_rx_buffer [UART_RINGBUFF_SIZE];
 char uart_buffer [UART_RINGBUFF_SIZE];
 min_context_t m_min_context;
 static min_frame_cfg_t m_min_setting = MIN_DEFAULT_CONFIG();
@@ -130,6 +132,10 @@ static char* wifi_name = CONFIG_ESP_WIFI_SSID;
 static char* wifi_pass = CONFIG_ESP_WIFI_PASSWORD;
 
 extern char recv_buf[64];
+//General variable
+esp_mqtt_client_handle_t mqtt_client;
+esp_eth_handle_t eth_handle;
+modem_dce_t *dce = NULL;
 
 void device_reboot(uint8_t reason)
 {
@@ -450,7 +456,7 @@ static void eth_event_handler(void *arg, esp_event_base_t event_base,
 {
     uint8_t mac_addr[6] = {0};
     /* we can get the ethernet driver handle from event data */
-    esp_eth_handle_t eth_handle = *(esp_eth_handle_t *)event_data;
+    eth_handle = *(esp_eth_handle_t *)event_data;
 
     switch (event_id) {
     case ETHERNET_EVENT_CONNECTED:
@@ -512,12 +518,12 @@ void gsm_gpio_config (void)
 void reset_task(void *arg)
 {
     //Subscribe this task to TWDT, then check if it is subscribed
-    CHECK_ERROR_CODE(esp_task_wdt_add(NULL), ESP_OK);
-    CHECK_ERROR_CODE(esp_task_wdt_status(NULL), ESP_OK);
+    ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
+    ESP_ERROR_CHECK(esp_task_wdt_status(NULL));
 
     while(1){
         //reset the watchdog every 2 seconds
-        CHECK_ERROR_CODE(esp_task_wdt_reset(), ESP_OK);  //Comment this line to trigger a TWDT timeout
+        ESP_ERROR_CHECK(esp_task_wdt_reset());  //Comment this line to trigger a TWDT timeout
         vTaskDelay(pdMS_TO_TICKS(TASK_RESET_PERIOD_S * 1000));
     }
 }
@@ -537,10 +543,10 @@ void change_protocol_using_to (protocol_type protocol)
 
 void handle_uart_data_task(void)
 {
-    uint8_t* data = (uint8_t*)malloc (1024);
+    uint8_t* data = (uint8_t*)malloc (10);
     if (lwrb_read (&data_uart_module_rb, data, 10))
     {
-        min_rx_feed(&m_min_context, min_rx_buffer);
+        min_rx_feed(&m_min_context, data, 10);
     }
     free(data);
 }
@@ -566,7 +572,7 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
 bool min_tx_byte(void *ctx, uint8_t byte)
 {
 	(void)ctx;
-	uart_write_bytes(UART_NUM_1, (const char*) byte, 1);
+	uart_write_bytes(UART_NUM_1, &byte, 1);
 	return true;
 }
 
@@ -584,7 +590,7 @@ void build_min_tx_data_for_spi(min_msg_t* min_msg, uint8_t* data_spi, uint8_t si
 
 void deinit_interface (protocol_type protocol)
 {
-    switch (expression)
+    switch (protocol)
     {
     case WIFI_PROTOCOL:
             esp_mqtt_client_destroy(mqtt_client);
@@ -688,10 +694,10 @@ void app_main(void)
 /*/
 #warning "need gpio config"
     gsm_gpio_config ();
-    CHECK_ERROR_CODE(esp_task_wdt_init(TWDT_TIMEOUT_S, false), ESP_OK);
+    ESP_ERROR_CHECK(esp_task_wdt_init(TWDT_TIMEOUT_S, false));
 //subcribe this task and checks it
-    CHECK_ERROR_CODE(esp_task_wdt_add(NULL), ESP_OK);
-    CHECK_ERROR_CODE(esp_task_wdt_status(NULL), ESP_OK);
+    ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
+    ESP_ERROR_CHECK(esp_task_wdt_status(NULL));
 
 #ifdef ESP32_S2
     // USB
@@ -722,13 +728,12 @@ void app_main(void)
     uart_set_pin(UART_NUM_0, GPIO_TX0, GPIO_RX0, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE); //uart for gsm
 
     lwrb_init (&data_uart_module_rb, uart_buffer, UART_RINGBUFF_SIZE); //init lwrb
-    m_min_setting.get_ms = sys_get_ms();
+    m_min_setting.get_ms = sys_get_ms;
     m_min_setting.last_rx_time = 0x00;
 	m_min_setting.rx_callback = min_rx_callback;
 	m_min_setting.timeout_not_seen_rx = 5000;
 	m_min_setting.tx_byte = min_tx_byte;
 	m_min_setting.use_timeout_method = 1;
-
     m_min_context.callback = &m_min_setting;
 	m_min_context.rx_frame_payload_buf = min_rx_buffer;
 	min_init_context(&m_min_context);
@@ -776,7 +781,7 @@ void app_main(void)
     assert(esp_netif);
     void *modem_netif_adapter;
 */
-    modem_dce_t *dce = NULL;
+    
     if(dce == NULL)
  //   dce = ec600s_init (dte); // dce init
     dce = ec2x_init (dte);
@@ -784,7 +789,6 @@ void app_main(void)
     {
         // INIT FAIL
         protocol_using = WIFI_PROTOCOL;
-        continue;
     }
     
     EventBits_t ubits;
@@ -804,7 +808,7 @@ void app_main(void)
     esp_eth_mac_t *mac = esp_eth_mac_new_esp32(&mac_config);
     esp_eth_phy_t *phy = esp_eth_phy_new_ip101(&phy_config);
     esp_eth_config_t config = ETH_DEFAULT_CONFIG(mac, phy);
-    esp_eth_handle_t eth_handle = NULL;
+    //esp_eth_handle_t eth_handle = NULL;
     ESP_ERROR_CHECK(esp_eth_driver_install(&config, &eth_handle));
     /* attach Ethernet driver to TCP/IP stack */
     ESP_ERROR_CHECK(esp_netif_attach(eth_netif, esp_eth_new_netif_glue(eth_handle)));
@@ -830,7 +834,6 @@ void app_main(void)
     if (uxBitsPing & WIFI_PING_TIMEOUT)
     {
         ESP_LOGI (TAG, "PING TIMEOUT");
-        break;
     }
     else if (uxBitsPing & WIFI_PING_SUCESS)
     {
@@ -840,17 +843,19 @@ void app_main(void)
     {
         ESP_LOGI (TAG, "PING UNEXPECTED EVENT");
     }
-
-    start_mqtt:
-    esp_mqtt_client_handle_t mqtt_client = esp_mqtt_client_init(&mqtt_config);
-    esp_mqtt_client_start(mqtt_client);
-
+    
+    char mqtt_broker_str [64];
+    
+    if (xQueueReceive (mqtt_info_queue, mqtt_broker_str, 20000/ portTICK_RATE_MS) == pdFALSE)
+    {
+        esp_restart();
+    }
     mqtt_info_queue = xQueueCreate(64, sizeof (char));
 
     static uint32_t now;
     static uint32_t last_tick_cnt = 0;
     while(1) {
-        CHECK_ERROR_CODE(esp_task_wdt_reset(), ESP_OK);
+        ESP_ERROR_CHECK(esp_task_wdt_reset());
 ///********************************* THIS START CODE CHANGED PROTOCOL
 /*
     REGISTER TOPIC
@@ -865,7 +870,6 @@ void app_main(void)
                                            5000);
             if (bits & WIFI_CONNECTED_BIT)
             {
-                m_got_ip = true;
                 ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
                         CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
                 protocol_using = WIFI_PROTOCOL;
@@ -939,7 +943,7 @@ void app_main(void)
         xTaskCreate(&http_get_task, "http_get_task", 4096, NULL, 5, NULL);
 
         //NEED RECIEVE QUEUE ABOUT SERVER INFO
-        char mqtt_broker_str [64];
+        
         if (xQueueReceive (mqtt_info_queue, mqtt_broker_str, 20000/ portTICK_RATE_MS) == pdFALSE)
         {
             esp_restart();
@@ -959,7 +963,7 @@ void app_main(void)
         
         while (1) //main process loop
         {
-            CHECK_ERROR_CODE(esp_task_wdt_reset(), ESP_OK);
+            ESP_ERROR_CHECK(esp_task_wdt_reset());
             EventBits_t uxBits = xEventGroupWaitBits(event_group, MQTT_DIS_CONNECT_BIT, pdTRUE, pdTRUE, 5/ portTICK_RATE_MS); // piority check disconnected event
             if ( (uxBits & MQTT_DIS_CONNECT_BIT) == MQTT_DIS_CONNECT_BIT)
             {
@@ -983,7 +987,7 @@ void app_main(void)
             if ((now - last_tick_cnt) > 100)
             {
                 // ping gd32 while being alive
-                send_min_data (&ping_min_msg);
+                send_min_data ((min_msg_t*) &ping_min_msg);
                 last_tick_cnt = now;
             }
             //can lay du lieu tu spi (doc tu gd32 qua uart) roi xu li
@@ -991,7 +995,7 @@ void app_main(void)
             if (1)//khi can gui du lieu qua spi
             {
                 min_msg_t min_msg_data_buff;
-                build_min_tx_data_for_spi(&min_msg_data_buff, "hello", 5);//test 
+                build_min_tx_data_for_spi(&min_msg_data_buff, (uint8_t*)"hello", 5);//test 
                 send_min_data (&min_msg_data_buff);
             }
             // handle_uart_data_task();

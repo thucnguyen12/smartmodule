@@ -5,7 +5,6 @@
  *      Author: huybk
  */
 
-#include "app_wifi.h"
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -89,8 +88,8 @@ static void obtain_time(void)
 void app_time(void)
 {
     time_t now;
-    struct tm timeinfo;
-    struct tm last_timeinfo;
+    static struct tm timeinfo = { 0 };
+    static struct tm last_timeinfo = { 0 };
     if ((timeinfo.tm_hour - last_timeinfo.tm_hour) < 1)
     {
         return;

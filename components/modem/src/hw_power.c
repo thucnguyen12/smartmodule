@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include "hw_power.h"
 #include "driver/gpio.h"
-
+#include "gsm_hardware.h"
 
 
 void hw_power_on (void)
@@ -63,3 +63,15 @@ void reset_GSM (void)
     vTaskDelay(1500 / portTICK_PERIOD_MS);
     gpio_set_level (GPIO_GSM_PWRKEY, 0);
 }
+/*
+void gsm_hw_ctrl_power_key(bool on)
+{
+    gpio_set_level(CONFIG_CONFIG_GSM_POWER_KEY_PIN, on ? 1 : 0);
+}
+
+void gsm_hw_ctrl_power_en(bool on)
+{
+//	ESP_LOGI(TAG, "Control pin %u-level %d\r\n", CONFIG_CONFIG_GSM_POWER_EN_PIN, on ? 0 : 1);
+	gpio_set_level(CONFIG_CONFIG_GSM_POWER_EN_PIN, on ? 1 : 0);
+}
+*/

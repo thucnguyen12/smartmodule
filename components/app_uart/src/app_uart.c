@@ -23,6 +23,8 @@
 #include "min.h"
 #include "min_id.h"
 
+#define PATTERN_CHR_NUM    (3)
+
 static const char *TAG = "app_uart";
 QueueHandle_t uart1_queue;
 QueueHandle_t uart0_queue;
@@ -123,11 +125,11 @@ void uart_event_task(void *pvParameters)
                 be full.*/
                 case UART_DATA:
                     //ESP_LOGI(TAG, "[UART DATA]: %d", event.size);
-                    uart_read_bytes(UART_NUM_0, dtmp, event.size, portMAX_DELAY);
+                    uart_read_bytes(UART_NUM_0, dtmp_uart0, event.size, portMAX_DELAY);
                     ESP_LOGI(TAG, "[UART0 DATA EVT]:");
-                    lwrb_write (data_uart_module_rb_ptr, dtmp, event.size); //write data to ringbuff
-                    min_rx_feed(&m_min_context, dtmp);
-                    //uart_write_bytes(UART_NUM_0, (const char*) dtmp, event.size);
+                    lwrb_write (data_uart_module_rb_ptr, dtmp_uart0, event.size); //write data to ringbuff
+                    min_rx_feed(&m_min_context, dtmp_uart0, event.size);
+                    //uart_write_bytes(UART_NUM_0, (const char*) dtmp_uart0, event.size);
                     break;
                 //Event of HW FIFO overflow detected
                 case UART_FIFO_OVF:

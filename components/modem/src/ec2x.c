@@ -28,11 +28,15 @@
 #include "esp_log.h"
 #include "sdkconfig.h"
 #include "gsm_hardware.h"
-#include "gsm_utilities.h"
-#include "board.h"
+#include "gsm_ultilities.h"
+#include "gsm_hardware.h"
+//#include "board.h"
 //#include "utilities.h"
 
 #define MODEM_RESULT_CODE_POWERDOWN "ec2x"
+
+#define MODEM_MAX_ACCESS_TECH_STR_LEN   64
+#define MODEM_MAX_NETWORK_BAND_STR_LEN  64
 
 /**
  * @brief Macro defined for error checking
@@ -963,18 +967,18 @@ err:
 
 static void gsm_reset_module(void)
 {
-    //	//Power off module by PowerKey
-    //	gsm_hw_ctrl_power_key(1);
-    //	vTaskDelay(1000 / portTICK_PERIOD_MS);
-    //	gsm_hw_ctrl_power_key(0);
+    	//Power off module by PowerKey
+    	gsm_hw_ctrl_power_key(1);
+    	vTaskDelay(1000 / portTICK_PERIOD_MS);
+    	gsm_hw_ctrl_power_key(0);
 
     //Turn off Vbat +4V2
-    gsm_hw_ctrl_power_en(0);
+//    gsm_hw_ctrl_power_en(0);
     vTaskDelay(3000 / portTICK_PERIOD_MS);
 
     //Turn ON Vbat +4V2
-    gsm_hw_ctrl_power_en(1);
-    vTaskDelay(1000 / portTICK_PERIOD_MS); //Waiting for Vbat stable 500ms
+//    gsm_hw_ctrl_power_en(1);
+//    vTaskDelay(1000 / portTICK_PERIOD_MS); //Waiting for Vbat stable 500ms
 
     /* Turn On module by PowerKey */
     gsm_hw_ctrl_power_key(1);
@@ -1108,7 +1112,7 @@ static void gsm_manager_task(void *arg)
                 if (err == ESP_OK)
                 {
                     ESP_LOGI(TAG, "Get GSM IMSI: %s", ec2x_dce->parent.imsi);
-                    board_set_device_id(atoi(ec2x_dce->parent.imsi));
+                    //board_set_device_id(atoi(ec2x_dce->parent.imsi));
                     send_at_retry_nb = 0;
                     gsm_init_step++;
                 }
@@ -1275,7 +1279,7 @@ static void gsm_manager_task(void *arg)
                     uint32_t rssi = 0, ber = 0;
                     ec2x_dce->parent.get_signal_quality(&ec2x_dce->parent, &rssi, &ber);
                     ESP_LOGI(TAG, "RSSI: %d, Ber: %d", rssi, ber);
-                    ec2x_dce->parent.rssi = rssi;
+                    //ec2x_dce->parent.rssi = rssi;
 
                     /* Get battery voltage */
                     uint32_t voltage = 0, bcs = 0, bcl = 0;

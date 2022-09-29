@@ -1285,6 +1285,11 @@ CONFIG_EXAMPLE_COMPONENT_MODEM_APN="CMNET"
 # ESP-MODEM
 #
 # end of ESP-MODEM
+
+#
+# ESP-MODEM
+#
+# end of ESP-MODEM
 # end of Component config
 
 #
