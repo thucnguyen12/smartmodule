@@ -115,9 +115,10 @@ void http_get_task(void *pvParameters)
             ESP_LOGI(TAG, "%d... ", countdown);
             vTaskDelay(1000 / portTICK_PERIOD_MS);
             // maybe we need vTaskDelete(); here!!!!
+            ESP_LOGI(TAG, "DELETE TASK AFTER GET MQTT INFO!");
+            vTaskDelete(NULL);
         }
-        ESP_LOGI(TAG, "DELETE TASK AFTER GET MQTT INFO!");
-        vTaskDelete(NULL);
+        
     }
 
 }

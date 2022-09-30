@@ -136,6 +136,7 @@ extern char recv_buf[64];
 esp_mqtt_client_handle_t mqtt_client;
 esp_eth_handle_t eth_handle;
 modem_dce_t *dce = NULL;
+bool mqtt_server_ready = false;
 
 void device_reboot(uint8_t reason)
 {
@@ -561,7 +562,7 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
     switch (frame->id)
     {
     case MIN_ID_RECIEVE_SPI_FROM_GD32:
-        
+        //handle spi data
         break;
     
     default:
@@ -829,11 +830,14 @@ void app_main(void)
     ESP_LOGI (TAG, "ETH CONNECT");
     do_ping_cmd(); //pinging to addr
     
+
+
     //init testing applications
     EventBits_t uxBitsPing = xEventGroupWaitBits(s_wifi_event_group, WIFI_PING_TIMEOUT | WIFI_PING_SUCESS, pdTRUE, pdFALSE, portMAX_DELAY);
     if (uxBitsPing & WIFI_PING_TIMEOUT)
     {
         ESP_LOGI (TAG, "PING TIMEOUT");
+        protocol_using = ETHERNET_PROTOCOL;
     }
     else if (uxBitsPing & WIFI_PING_SUCESS)
     {
@@ -843,15 +847,20 @@ void app_main(void)
     {
         ESP_LOGI (TAG, "PING UNEXPECTED EVENT");
     }
-    
-    char mqtt_broker_str [64];
-    
-    if (xQueueReceive (mqtt_info_queue, mqtt_broker_str, 20000/ portTICK_RATE_MS) == pdFALSE)
+    static char mqtt_broker_str [64];
+    if (mqtt_server_ready)
     {
-        esp_restart();
+        // get mqtt server from http request
+        xTaskCreate(&http_get_task, "http_get_task", 4096, NULL, 5, NULL);
+       
+        if (xQueueReceive (mqtt_info_queue, mqtt_broker_str, 20000/ portTICK_RATE_MS) == pdFALSE)
+        {
+            esp_restart();
+        }
+        mqtt_info_queue = xQueueCreate(128, sizeof (char));
+        mqtt_server_ready = true;
     }
-    mqtt_info_queue = xQueueCreate(64, sizeof (char));
-
+    
     static uint32_t now;
     static uint32_t last_tick_cnt = 0;
     while(1) {
@@ -938,15 +947,18 @@ void app_main(void)
             break;
         }
         // wait connected then we listen to mqtt sever
-
-        // get mqtt server from http request
-        xTaskCreate(&http_get_task, "http_get_task", 4096, NULL, 5, NULL);
-
-        //NEED RECIEVE QUEUE ABOUT SERVER INFO
-        
-        if (xQueueReceive (mqtt_info_queue, mqtt_broker_str, 20000/ portTICK_RATE_MS) == pdFALSE)
+        if (mqtt_server_ready)
         {
-            esp_restart();
+            // get mqtt server from http request
+            xTaskCreate(&http_get_task, "http_get_task", 4096, NULL, 5, NULL);
+            
+            
+            if (xQueueReceive (mqtt_info_queue, mqtt_broker_str, 20000/ portTICK_RATE_MS) == pdFALSE)
+            {
+                esp_restart();
+            }
+            mqtt_info_queue = xQueueCreate(128, sizeof (char));
+            mqtt_server_ready = true;
         }
         /* Config MQTT */
         esp_mqtt_client_config_t mqtt_config = {
@@ -954,7 +966,7 @@ void app_main(void)
         .username = "mqtt",
         .password = "Thucanh!@",
         .event_handle = mqtt_event_handler,
-    };
+        };
 
         // we modulized connect event
         mqtt_client = esp_mqtt_client_init(&mqtt_config);
@@ -972,6 +984,7 @@ void app_main(void)
                 change_protocol_using_to (ETHERNET_PROTOCOL);
                 //app_time();
                 vTaskDelay(5 / portTICK_PERIOD_MS);
+                mqtt_server_ready = false;
                 break;
             }
             app_time();
@@ -1002,10 +1015,6 @@ void app_main(void)
         }
         //deinit after get out of loop to reinit in new loop
         deinit_interface (protocol_using);
-        //do cmd nghiep vu
-        /*
-            can check li do reset mem     
-        */
     }
 //    ESP_ERROR_CHECK(dte->deinit(dte));
 }

@@ -127,7 +127,7 @@ void uart_event_task(void *pvParameters)
                     //ESP_LOGI(TAG, "[UART DATA]: %d", event.size);
                     uart_read_bytes(UART_NUM_0, dtmp_uart0, event.size, portMAX_DELAY);
                     ESP_LOGI(TAG, "[UART0 DATA EVT]:");
-                    lwrb_write (data_uart_module_rb_ptr, dtmp_uart0, event.size); //write data to ringbuff
+                    //lwrb_write (data_uart_module_rb_ptr, dtmp_uart0, event.size); //write data to ringbuff
                     min_rx_feed(&m_min_context, dtmp_uart0, event.size);
                     //uart_write_bytes(UART_NUM_0, (const char*) dtmp_uart0, event.size);
                     break;
