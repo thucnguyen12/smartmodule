@@ -69,7 +69,9 @@
 #include "http_request.h"
 //sync timer
 #include "app_time_sync.h"
-
+#include "gsm_ultilities.h"
+//
+#include "app_mqtt.h"
 
 #define BROKER_URL "mqtt://mqtt.eclipseprojects.io:1883"
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_PSK
@@ -81,7 +83,7 @@
 #define EXAMPLE_PING_INTERVAL      1
 #define BUF_SIZE (1024)
 
-#define TWDT_TIMEOUT_S          3
+#define TWDT_TIMEOUT_S          30
 #define TASK_RESET_PERIOD_S     2
 
 #define CONFIG_EXAMPLE_SKIP_VERSION_CHECK 1
@@ -131,12 +133,21 @@ protocol_type protocol_using = DEFAULT_PROTOCOL;
 static char* wifi_name = CONFIG_ESP_WIFI_SSID;
 static char* wifi_pass = CONFIG_ESP_WIFI_PASSWORD;
 
+esp_mqtt_client_config_t mqtt_config;
+static char mqtt_host [64];
+uint32_t mqtt_port;
+static char mqtt_username [64];
+static char mqtt_password [64];
+
 extern char recv_buf[64];
 //General variable
 esp_mqtt_client_handle_t mqtt_client;
 esp_eth_handle_t eth_handle;
 modem_dce_t *dce = NULL;
 bool mqtt_server_ready = false;
+bool wifi_started = false;
+bool eth_started = false;
+bool gsm_started = false;
 
 void device_reboot(uint8_t reason)
 {
@@ -240,7 +251,7 @@ static void cmd_ping_on_ping_success(esp_ping_handle_t hdl, void *args)
     esp_ping_get_profile(hdl, ESP_PING_PROF_SIZE, &recv_len, sizeof(recv_len));
     esp_ping_get_profile(hdl, ESP_PING_PROF_TIMEGAP, &elapsed_time, sizeof(elapsed_time));
     printf("%d bytes from %s icmp_seq=%d ttl=%d time=%d ms\n",
-           recv_len, inet_ntoa(target_addr.u_addr.ip4), seqno, ttl, elapsed_time);
+    recv_len, inet_ntoa(target_addr.u_addr.ip4), seqno, ttl, elapsed_time);
 }
 
 static void cmd_ping_on_ping_timeout(esp_ping_handle_t hdl, void *args)
@@ -352,8 +363,8 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
     switch (event->event_id) {
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-        msg_id = esp_mqtt_client_subscribe(client, "/topic/esp-pppos", 0);
-        msg_id = esp_mqtt_client_subscribe(client, "/update", 0);
+        //msg_id = esp_mqtt_client_subscribe(client, "/topic/esp-pppos", 0);
+        //msg_id = esp_mqtt_client_subscribe(client, "/update", 0);
         ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
         break;
     case MQTT_EVENT_DISCONNECTED:
@@ -584,7 +595,7 @@ void send_min_data(min_msg_t *min_msg)
 
 void build_min_tx_data_for_spi(min_msg_t* min_msg, uint8_t* data_spi, uint8_t size)
 {
-    min_msg->id = MIN_ID_RECIEVE_SPI_FROM_GD32;
+    min_msg->id = MIN_ID_SEND_SPI_FROM_ESP32;
     memcpy (min_msg->payload, data_spi, size);
     min_msg->len = size;
 }
@@ -597,10 +608,12 @@ void deinit_interface (protocol_type protocol)
             esp_mqtt_client_destroy(mqtt_client);
             ESP_LOGI(TAG, "destroy mqtt");
             esp_wifi_stop();
+            wifi_started = false;
         break;
     case ETHERNET_PROTOCOL:
             esp_mqtt_client_destroy(mqtt_client);
             ESP_ERROR_CHECK(esp_eth_stop(eth_handle));
+            eth_started = false; 
             ESP_LOGI(TAG, "destroy mqtt");
         break;
     case GSM_4G_PROTOCOL:
@@ -608,6 +621,7 @@ void deinit_interface (protocol_type protocol)
             ESP_LOGI(TAG, "destroy mqtt");
             /* Exit PPP mode */
             ESP_ERROR_CHECK(esp_modem_stop_ppp(dte));
+            gsm_started = false;
             ESP_LOGI(TAG, "ppp stop");
             xEventGroupWaitBits(event_group, STOP_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
 #if CONFIG_EXAMPLE_SEND_MSG
@@ -632,8 +646,6 @@ void deinit_interface (protocol_type protocol)
         break;
     }
 }
-
-
 
 void app_main(void)
 {
@@ -695,10 +707,7 @@ void app_main(void)
 /*/
 #warning "need gpio config"
     gsm_gpio_config ();
-    ESP_ERROR_CHECK(esp_task_wdt_init(TWDT_TIMEOUT_S, false));
-//subcribe this task and checks it
-    ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
-    ESP_ERROR_CHECK(esp_task_wdt_status(NULL));
+    
 
 #ifdef ESP32_S2
     // USB
@@ -750,10 +759,11 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &on_ip_event, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(NETIF_PPP_STATUS, ESP_EVENT_ANY_ID, &on_ppp_changed, NULL));
-
+    //creat share resources 
     event_group = xEventGroupCreate();
     GSM_Sem = xSemaphoreCreateMutex();
-   
+    mqtt_info_queue = xQueueCreate(1, sizeof(mqtt_info_struct));
+
     /* create dte object */
     esp_modem_dte_config_t dte_config = ESP_MODEM_DTE_DEFAULT_CONFIG();
     /* setup UART specific configuration based on kconfig options */
@@ -803,9 +813,9 @@ void app_main(void)
     eth_phy_config_t phy_config = ETH_PHY_DEFAULT_CONFIG();
 
     phy_config.phy_addr = 1;
-    phy_config.reset_gpio_num = CONFIG_ETH_PHY_RST_GPIO;
-    mac_config.smi_mdc_gpio_num = CONFIG_ETH_MDC_GPIO;
-    mac_config.smi_mdio_gpio_num = CONFIG_ETH_MDIO_GPIO;
+    phy_config.reset_gpio_num = 5;
+    mac_config.smi_mdc_gpio_num = 23;
+    mac_config.smi_mdio_gpio_num = 18;
     esp_eth_mac_t *mac = esp_eth_mac_new_esp32(&mac_config);
     esp_eth_phy_t *phy = esp_eth_phy_new_ip101(&phy_config);
     esp_eth_config_t config = ETH_DEFAULT_CONFIG(mac, phy);
@@ -813,25 +823,60 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_eth_driver_install(&config, &eth_handle));
     /* attach Ethernet driver to TCP/IP stack */
     ESP_ERROR_CHECK(esp_netif_attach(eth_netif, esp_eth_new_netif_glue(eth_handle)));
+    ESP_LOGI (TAG, "netif attach done");
     // end ethernet
-    ESP_ERROR_CHECK(esp_eth_start(eth_handle)); //start ethenet 
 
     /* Register event handler */
-    ESP_ERROR_CHECK(esp_modem_set_event_handler(dte, modem_event_handler, ESP_EVENT_ANY_ID, NULL)); //FOR MODEM
+    if (dte != NULL)
+    {
+        ESP_ERROR_CHECK(esp_modem_set_event_handler(dte, modem_event_handler, ESP_EVENT_ANY_ID, NULL)); //FOR MODEM
+    }
     ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, &eth_event_handler, NULL)); //  FOR ETH
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &got_ip_event_handler, NULL)); // FOR IP
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_PPP_GOT_IP, &got_ip_event_handler, NULL)); // FOR IP
-    
+    //wdt init    
+    ESP_ERROR_CHECK(esp_task_wdt_init(TWDT_TIMEOUT_S, false));
+    //subcribe this task and checks it
+    ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
+    ESP_ERROR_CHECK(esp_task_wdt_status(NULL));
+
     ESP_LOGI (TAG, "BEGIN WIFI");
     app_wifi_connect (wifi_name, wifi_pass);
+    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
+                                           WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+                                           pdFALSE,
+                                           pdFALSE,
+                                           5000);
+    if (bits & WIFI_CONNECTED_BIT)
+    {
+        ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
+                CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
+        wifi_started = true;
+        protocol_using = WIFI_PROTOCOL;
+    }
+    else if (bits & WIFI_FAIL_BIT)
+    {
+        ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
+                CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
+        wifi_started = false;
+        protocol_using = ETHERNET_PROTOCOL;
+    }
+    else
+    {
+        wifi_started = false;
+        ESP_LOGE(TAG, "UNEXPECTED EVENT");
+    }
     ESP_LOGI (TAG, "WIFI CONNECT");
-    
-    ESP_ERROR_CHECK(esp_eth_start(eth_handle));
-    ESP_LOGI (TAG, "ETH CONNECT");
-    do_ping_cmd(); //pinging to addr
-    
-
-
+    if (wifi_started == false)
+    {
+        ESP_ERROR_CHECK(esp_eth_start (eth_handle)); //start ethenet 
+        ESP_LOGI (TAG, "ETH CONNECT");
+        eth_started = true;
+    }
+        // esp_wifi_stop();
+    // ESP_LOGI (TAG, "WIFI DISCONNECT");
+    do_ping_cmd();//pinging to addr
+    ESP_ERROR_CHECK(esp_task_wdt_reset());
     //init testing applications
     EventBits_t uxBitsPing = xEventGroupWaitBits(s_wifi_event_group, WIFI_PING_TIMEOUT | WIFI_PING_SUCESS, pdTRUE, pdFALSE, portMAX_DELAY);
     if (uxBitsPing & WIFI_PING_TIMEOUT)
@@ -847,28 +892,62 @@ void app_main(void)
     {
         ESP_LOGI (TAG, "PING UNEXPECTED EVENT");
     }
-    static char mqtt_broker_str [64];
-    if (mqtt_server_ready)
+    
+    mqtt_info_struct mqtt_broker_str;
+    ESP_ERROR_CHECK(esp_task_wdt_reset());
+    if (mqtt_server_ready == false)
     {
         // get mqtt server from http request
         xTaskCreate(&http_get_task, "http_get_task", 4096, NULL, 5, NULL);
-       
-        if (xQueueReceive (mqtt_info_queue, mqtt_broker_str, 20000/ portTICK_RATE_MS) == pdFALSE)
+
+        BaseType_t res = xQueueReceive (mqtt_info_queue, &mqtt_broker_str, 20000/ portTICK_RATE_MS);
+        if (res == pdTRUE)
         {
+            ESP_LOGI (TAG, "Recieve queue\r\n");
+        }
+        else if (res == pdFALSE)
+        {
+            ESP_LOGI (TAG, "Recieve queue fail\r\n");
             esp_restart();
         }
-        mqtt_info_queue = xQueueCreate(128, sizeof (char));
+        //parse_mqtt_info (mqtt_broker_str, mqtt_host, &mqtt_port, mqtt_username, mqtt_password);
+        
+        // sprintf (mqtt_host , "\"%s\"", mqtt_broker_str.server_ip);
+        // mqtt_port = mqtt_broker_str.port;
+        // sprintf (mqtt_username , "\"%s\"", mqtt_broker_str.username);
+        // sprintf (mqtt_password , "\"%s\"", mqtt_broker_str.password);
+
+        memcpy (mqtt_host, mqtt_broker_str.server_ip, strlen (mqtt_broker_str.server_ip));
+        mqtt_port = mqtt_broker_str.port;
+        memcpy (mqtt_username, mqtt_broker_str.username, strlen (mqtt_broker_str.username));
+        memcpy (mqtt_password, mqtt_broker_str.password, strlen (mqtt_broker_str.password));
+
+        
+        ESP_LOGI (TAG,"queue form host:%s\r\n", mqtt_host);
+        ESP_LOGI (TAG,"queue form port:%d\r\n", mqtt_port);
+        ESP_LOGI (TAG,"queue form username:%s\r\n", mqtt_username);
+        ESP_LOGI (TAG,"queue form password:%s\r\n", mqtt_password);
+        /* Config MQTT */
+        mqtt_config.host = mqtt_host;
+        mqtt_config.port = mqtt_port;
+        mqtt_config.username = mqtt_username;
+        mqtt_config.password = mqtt_password;
+        mqtt_config.event_handle = mqtt_event_handler;
         mqtt_server_ready = true;
     }
-    
+
     static uint32_t now;
     static uint32_t last_tick_cnt = 0;
-    while(1) {
+    while(1) 
+    {
         ESP_ERROR_CHECK(esp_task_wdt_reset());
+        
 ///********************************* THIS START CODE CHANGED PROTOCOL
 /*
     REGISTER TOPIC
-*/
+*/  
+        ESP_LOGI(TAG, "PROTOCOL USE: %d ", protocol_using);
+
         if (protocol_using != WIFI_PROTOCOL)
         {
             app_wifi_connect (wifi_name, wifi_pass);
@@ -881,6 +960,7 @@ void app_main(void)
             {
                 ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
                         CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
+                wifi_started = true;
                 protocol_using = WIFI_PROTOCOL;
             }
             else if (bits & WIFI_FAIL_BIT)
@@ -893,42 +973,47 @@ void app_main(void)
             {
                 ESP_LOGE(TAG, "UNEXPECTED EVENT");
             }
-        }
-        else if (protocol_using != ETHERNET_PROTOCOL)
+        } 
+        else if ((protocol_using != ETHERNET_PROTOCOL) && (protocol_using != WIFI_PROTOCOL))
         {
             protocol_using = ETHERNET_PROTOCOL;
-        }
-        else
-        {
-            protocol_using = GSM_4G_PROTOCOL;
         }
 
         switch (protocol_using)
         {
         case WIFI_PROTOCOL:
-        
-            ESP_LOGI (TAG, "BEGIN WIFI");
-            app_wifi_connect (wifi_name, wifi_pass);
-            ESP_LOGI (TAG, "WIFI CONNECT");
-            do_ping_cmd(); //pinging to addr 
-            EventBits_t uxBitsPing = xEventGroupWaitBits(s_wifi_event_group, WIFI_PING_TIMEOUT | WIFI_PING_SUCESS, pdTRUE, pdFALSE, portMAX_DELAY);
-            if (uxBitsPing & WIFI_PING_TIMEOUT)
+            if (wifi_started == false)
             {
-                ESP_LOGI (TAG, "PING TIMEOUT, RETRY WITH ETH");
-                change_protocol_using_to (ETHERNET_PROTOCOL);
-                continue;
-            }
-            else if (uxBitsPing & WIFI_PING_SUCESS)
-            {
-                ESP_LOGI (TAG, "PING OK");
-            }
-            else
-            {
-                ESP_LOGI (TAG, "PING UNEXPECTED EVENT");
+                ESP_LOGI (TAG, "BEGIN WIFI");
+                app_wifi_connect (wifi_name, wifi_pass);
+                
+                ESP_LOGI (TAG, "WIFI CONNECT");
+                do_ping_cmd(); //pinging to addr 
+                EventBits_t uxBitsPing = xEventGroupWaitBits(s_wifi_event_group, WIFI_PING_TIMEOUT | WIFI_PING_SUCESS, pdTRUE, pdFALSE, portMAX_DELAY);
+                if (uxBitsPing & WIFI_PING_TIMEOUT)
+                {
+                    ESP_LOGI (TAG, "PING TIMEOUT, RETRY WITH ETH");
+                    change_protocol_using_to (ETHERNET_PROTOCOL);
+                    continue;
+                }
+                else if (uxBitsPing & WIFI_PING_SUCESS)
+                {
+                    ESP_LOGI (TAG, "PING OK");
+                    wifi_started = true;
+                }
+                else
+                {
+                    ESP_LOGI (TAG, "PING UNEXPECTED EVENT");
+                }
+                
             }
             break;
         case ETHERNET_PROTOCOL:
-            ESP_ERROR_CHECK(esp_eth_start(eth_handle));    
+            if (eth_started == false)
+            {
+                ESP_ERROR_CHECK(esp_eth_start(eth_handle));
+                eth_started = true;
+            }
         break;
         case GSM_4G_PROTOCOL:
             dce = NULL;
@@ -947,32 +1032,59 @@ void app_main(void)
             break;
         }
         // wait connected then we listen to mqtt sever
-        if (mqtt_server_ready)
+        if (mqtt_server_ready == false)
         {
+            ESP_LOGI (TAG, "MQTT CONFIG");
             // get mqtt server from http request
             xTaskCreate(&http_get_task, "http_get_task", 4096, NULL, 5, NULL);
-            
-            
-            if (xQueueReceive (mqtt_info_queue, mqtt_broker_str, 20000/ portTICK_RATE_MS) == pdFALSE)
+
+            BaseType_t res = xQueueReceive (mqtt_info_queue, &mqtt_broker_str, 20000/ portTICK_RATE_MS);
+            if (res == pdTRUE)
             {
+                ESP_LOGI (TAG, "Recieve queue\r\n");
+            }
+            else if (res == pdFALSE)
+            {
+                ESP_LOGI (TAG, "Recieve queue fail\r\n");
                 esp_restart();
             }
-            mqtt_info_queue = xQueueCreate(128, sizeof (char));
+            //parse_mqtt_info (mqtt_broker_str, mqtt_host, &mqtt_port, mqtt_username, mqtt_password);
+            
+            memcpy (mqtt_host, mqtt_broker_str.server_ip, strlen (mqtt_broker_str.server_ip));
+            mqtt_port = mqtt_broker_str.port;
+            memcpy (mqtt_username, mqtt_broker_str.username, strlen (mqtt_broker_str.username));
+            memcpy (mqtt_password, mqtt_broker_str.password, strlen (mqtt_broker_str.password));
+            
+            ESP_LOGI (TAG,"queue form host:%s\r\n", mqtt_host);
+            ESP_LOGI (TAG,"queue form port:%d\r\n", mqtt_port);
+            ESP_LOGI (TAG,"queue form username:%s\r\n", mqtt_username);
+            ESP_LOGI (TAG,"queue form password:%s\r\n", mqtt_password);
+
+            /* Config MQTT */
+            mqtt_config.host = mqtt_host;
+            mqtt_config.port = mqtt_port;
+            mqtt_config.username = mqtt_username;
+            mqtt_config.password = mqtt_password;
+            mqtt_config.event_handle = mqtt_event_handler;
             mqtt_server_ready = true;
         }
-        /* Config MQTT */
-        esp_mqtt_client_config_t mqtt_config = {
-        .uri = mqtt_broker_str,
-        .username = "mqtt",
-        .password = "Thucanh!@",
-        .event_handle = mqtt_event_handler,
-        };
-
+        
         // we modulized connect event
         mqtt_client = esp_mqtt_client_init(&mqtt_config);
+        ESP_LOGI (TAG, "MQTT INIT");
         esp_mqtt_client_start(mqtt_client);
         //register topic
-        
+        {
+            //this is example for heartbeat topic
+            char topic_header [64];
+            make_mqtt_topic_header (HEART_BEAT_HEADER, "bsafe", "12312321_exampleIMEI", topic_header);
+            int msg_id = esp_mqtt_client_subscribe(mqtt_client, topic_header, 0);
+            ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+
+            make_mqtt_topic_header (FIRE_ALARM_HEADER, "bsafe", "12312321_exampleIMEI", topic_header);
+            msg_id = esp_mqtt_client_subscribe(mqtt_client, topic_header, 0);
+            ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+        }
         while (1) //main process loop
         {
             ESP_ERROR_CHECK(esp_task_wdt_reset());
@@ -989,7 +1101,7 @@ void app_main(void)
             }
             app_time();
             //xEventGroupWaitBits(event_group, GOT_DATA_BIT, pdTRUE, pdTRUE, 1000 / portTICK_RATE_MS);
-            ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 5/ portTICK_RATE_MS); // We maybe 
+            ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 5/ portTICK_RATE_MS); 
             if (ubits & WAIT_BIT)
             {
                 xTaskCreate(&advanced_ota_example_task, "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
@@ -997,7 +1109,7 @@ void app_main(void)
 
             /* this space for functions */
             now = sys_get_ms();
-            if ((now - last_tick_cnt) > 100)
+            if ((now - last_tick_cnt) > 1000)
             {
                 // ping gd32 while being alive
                 send_min_data ((min_msg_t*) &ping_min_msg);

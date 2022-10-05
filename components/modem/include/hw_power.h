@@ -6,7 +6,7 @@ extern "C" {
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#define GPIO_GSM_RESET 18
+#define GPIO_GSM_RESET 16
 #define GPIO_GSM_PWRKEY 21
 #define GPIO_GSM_EN 5
 #define GPIO_INPUT_PWRKEY 34

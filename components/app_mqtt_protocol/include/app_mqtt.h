@@ -121,4 +121,7 @@ typedef struct
     char *payload;
 } app_mqtt_msg_t;
 
+void make_mqtt_topic_header(header_type_t header_type ,char *topic_hr, char *IMEI, char* str_out);
+
+
 #endif

@@ -18,9 +18,18 @@
 #include "lwip/netdb.h"
 #include "lwip/dns.h"
 //#define OTA_CONFIG_ADD_STR "http://192.168.2.241/pppos_client.bin"
-#define WEB_SERVER "http://192.168.2.241"
-#define WEB_PORT "80"
-#define WEB_PATH "/pppos_client.bin"
+#define WEB_SERVER "btwork.bytechjsc.vn"
+#define WEB_PORT "5500"
+#define WEB_PATH "/api/server-info"
+
+typedef struct 
+{
+    char server_ip [32];
+    int port;
+    char username [32];
+    char password [32];
+} mqtt_info_struct ;
+
 
 void http_get_task(void *pvParameters);
 
