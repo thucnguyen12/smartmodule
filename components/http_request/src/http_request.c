@@ -183,7 +183,6 @@ void http_get_task(void *pvParameters)
             }
             xQueueSend (mqtt_info_queue, &mqtt_info, 0);            
         }
-        
         ESP_LOGI(TAG, "... done reading from socket. Last read return=%d errno=%d.", r, errno);
         close(s);
         ESP_LOGI(TAG, "DELETE TASK AFTER GET MQTT INFO!");

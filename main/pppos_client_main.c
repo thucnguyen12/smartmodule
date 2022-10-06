@@ -72,6 +72,8 @@
 #include "gsm_ultilities.h"
 //
 #include "app_mqtt.h"
+#include "cJSON.h"
+#include "spi_eeprom.h"
 
 #define BROKER_URL "mqtt://mqtt.eclipseprojects.io:1883"
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_PSK
@@ -89,6 +91,12 @@
 #define CONFIG_EXAMPLE_SKIP_VERSION_CHECK 1
 #define UART_RINGBUFF_SIZE 1024
 
+#define EEPROM_HOST     HSPI_HOST
+#define PIN_NUM_MISO    18
+#define PIN_NUM_MOSI    23
+#define PIN_NUM_CLK     19
+#define PIN_NUM_CS      13
+
 static const char *TAG = "pppos_example";
 static EventGroupHandle_t event_group = NULL;
 static const int CONNECT_BIT = BIT0;
@@ -96,6 +104,7 @@ static const int STOP_BIT = BIT1;
 static const int GOT_DATA_BIT = BIT2;
 static const int MQTT_DIS_CONNECT_BIT = BIT3;
 static const int WAIT_BIT = BIT4; 
+static const int MQTT_CONNECT_BIT = BIT5;
 TaskHandle_t m_uart_task = NULL;
 SemaphoreHandle_t GSM_Sem;
 SemaphoreHandle_t GSM_Task_tearout;
@@ -106,6 +115,7 @@ modem_dte_t *dte = NULL;
 // static bool network_connected = false;
 // extern const uint8_t server_cert_pem_start[] asm("_binary_ca_cert_pem_start");
 // extern const uint8_t server_cert_pem_end[] asm("_binary_ca_cert_pem_end");
+char * GSM_IMEI[16];
 
 extern QueueHandle_t uart1_queue;
 extern QueueHandle_t uart0_queue;
@@ -363,9 +373,10 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
     switch (event->event_id) {
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
+        xEventGroupSetBits(event_group, MQTT_CONNECT_BIT);
         //msg_id = esp_mqtt_client_subscribe(client, "/topic/esp-pppos", 0);
         //msg_id = esp_mqtt_client_subscribe(client, "/update", 0);
-        ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+        //ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
         break;
     case MQTT_EVENT_DISCONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
@@ -404,6 +415,53 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
         if (strstr (event->topic, "/g2d/config/"))
         {
             // lưu lại
+        }
+
+        if (strstr (event->topic, "/bleConfigInfo"))
+        {
+            /*
+            ble_info_t ble_config_info;
+            cJSON* netkey = NULL;
+            cJSON* appkey = NULL;
+            cJSON* iv_index = NULL;
+            cJSON* sequence_number = NULL;
+            cJSON* json_test = NULL;
+            char* config = strstr (event->data, "{");
+            ble_config_json = parse_json (test);
+
+            netkey = cJSON_GetObjectItemCaseSensitive (ble_config_json, "netkey");
+            if (cJSON_IsString(netkey))
+            {
+                ESP_LOGI(TAG,"netkey:\"%s\"\n", netkey->valuestring);
+                memcpy (ble_config_info.netkey, netkey->valuestring, strlen (net_key->valuestring));
+            }
+            appkey = cJSON_GetObjectItemCaseSensitive (ble_config_json, "appkey");
+
+            if (cJSON_IsString(appkey))
+            {
+                ESP_LOGI(TAG,"appkey:\"%s\"\n", appkey->valuestring);
+                memcpy (ble_config_info.appkey, netkey->valuestring, strlen (appkey->valuestring));
+            }
+           
+            iv_index = cJSON_GetObjectItemCaseSensitive (ble_config_json, "iv_index");
+            if (cJSON_IsString(iv_index))
+            {
+                ESP_LOGI(TAG,"iv_index:\"%s\"\n", iv_index->valueint);
+                ble_config_info.iv_index = iv_index->valueint;
+            }
+            
+            sequence_number = cJSON_GetObjectItemCaseSensitive (ble_config_json, "sequence_number");
+            if (cJSON_IsString(sequence_number))
+            {
+                ESP_LOGI(TAG,"sequence_number:\"%s\"\n", sequence_number->valueint);
+                ble_config_info.sequence_number = sequence_number->valueint;
+            }
+            if (ble_config_json != NULL)
+            {
+                cJSON_Delete(ble_config_json);
+            }
+            //set bit
+            */
         }
 
         break;
@@ -497,7 +555,6 @@ static void got_ip_event_handler(void *arg, esp_event_base_t event_base,
 {
     ip_event_got_ip_t *event = (ip_event_got_ip_t *) event_data;
     const esp_netif_ip_info_t *ip_info = &event->ip_info;
-
     ESP_LOGI(TAG, "Ethernet Got IP Address");
     ESP_LOGI(TAG, "~~~~~~~~~~~");
     ESP_LOGI(TAG, "ETHIP:" IPSTR, IP2STR(&ip_info->ip));
@@ -575,7 +632,12 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
     case MIN_ID_RECIEVE_SPI_FROM_GD32:
         //handle spi data
         break;
-    
+    case MIN_ID_RECEIVE_HEARTBEAT_MSG:
+        break;
+    case MIN_ID_RECIEVE_SPI_FROM_GD32:
+        break;
+    case MIN_ID_RECEIVE_BEACON_MSG:
+        break;
     default:
         break;
     }
@@ -630,9 +692,12 @@ void deinit_interface (protocol_type protocol)
             ESP_LOGI(TAG, "Send send message [%s] ok", message);
 #endif
             /* Power down module */
-            ESP_ERROR_CHECK(dce->power_down(dce));
-            ESP_LOGI(TAG, "Power down");
-            ESP_ERROR_CHECK(dce->deinit(dce)); //deinit
+            if (dce != NULL)
+            {
+                ESP_ERROR_CHECK(dce->power_down(dce));
+                ESP_LOGI(TAG, "Power down");
+                ESP_ERROR_CHECK(dce->deinit(dce)); //deinit
+            }
             if (esp_modem_netif_clear_default_handlers(modem_netif_adapter) == ESP_OK)
             {
                 ESP_LOGI ("UNREGISTER", "CLEAR TO REINIT");
@@ -796,6 +861,8 @@ void app_main(void)
     if(dce == NULL)
  //   dce = ec600s_init (dte); // dce init
     dce = ec2x_init (dte);
+    xSemaphoreTake (GSM_Sem, 10000/ portTICK_PERIOD_MS);
+    // GSM_IMEI[16]; store gsm imei
     if(dce == NULL)
     {
         // INIT FAIL
@@ -826,6 +893,30 @@ void app_main(void)
     ESP_LOGI (TAG, "netif attach done");
     // end ethernet
 
+    // eeprom config/////////////////////////////////////////////////////////////////////////////////////////////
+    {
+        spi_bus_config_t buscfg={
+        .miso_io_num = PIN_NUM_MISO,
+        .mosi_io_num = PIN_NUM_MOSI,
+        .sclk_io_num = PIN_NUM_CLK,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = 32,
+        };
+
+        eeprom_handle_t eeprom_handle;
+
+        esp_err_t ret = spi_bus_initialize(EEPROM_HOST, &buscfg, SPI_DMA_CH_AUTO);
+        eeprom_config_t eeprom_config = {
+        .cs_io = PIN_NUM_CS,
+        .host = EEPROM_HOST,
+        .miso_io = PIN_NUM_MISO,
+        };
+        ret = spi_eeprom_init(&eeprom_config, &eeprom_handle);
+        ESP_ERROR_CHECK(ret);
+        ret = spi_eeprom_write_enable(eeprom_handle);
+    ESP_ERROR_CHECK(ret);
+    }
     /* Register event handler */
     if (dte != NULL)
     {
@@ -834,7 +925,7 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, &eth_event_handler, NULL)); //  FOR ETH
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &got_ip_event_handler, NULL)); // FOR IP
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_PPP_GOT_IP, &got_ip_event_handler, NULL)); // FOR IP
-    //wdt init    
+    //wdt init
     ESP_ERROR_CHECK(esp_task_wdt_init(TWDT_TIMEOUT_S, false));
     //subcribe this task and checks it
     ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
@@ -873,7 +964,7 @@ void app_main(void)
         ESP_LOGI (TAG, "ETH CONNECT");
         eth_started = true;
     }
-        // esp_wifi_stop();
+    // esp_wifi_stop();
     // ESP_LOGI (TAG, "WIFI DISCONNECT");
     do_ping_cmd();//pinging to addr
     ESP_ERROR_CHECK(esp_task_wdt_reset());
@@ -941,11 +1032,6 @@ void app_main(void)
     while(1) 
     {
         ESP_ERROR_CHECK(esp_task_wdt_reset());
-        
-///********************************* THIS START CODE CHANGED PROTOCOL
-/*
-    REGISTER TOPIC
-*/  
         ESP_LOGI(TAG, "PROTOCOL USE: %d ", protocol_using);
 
         if (protocol_using != WIFI_PROTOCOL)
@@ -1005,7 +1091,6 @@ void app_main(void)
                 {
                     ESP_LOGI (TAG, "PING UNEXPECTED EVENT");
                 }
-                
             }
             break;
         case ETHERNET_PROTOCOL:
@@ -1016,8 +1101,10 @@ void app_main(void)
             }
         break;
         case GSM_4G_PROTOCOL:
+
             dce = NULL;
             dce = ec2x_init (dte);
+
             if(dce == NULL)
             {
                 ESP_LOGE(TAG, "INT 4G FAIL");
@@ -1115,6 +1202,12 @@ void app_main(void)
                 send_min_data ((min_msg_t*) &ping_min_msg);
                 last_tick_cnt = now;
             }
+            /*
+                lấy thông tin từ mqtt gửi xuống ble
+                định kì nhận bản tin heartbeat gửi lên topic
+                lấy đc IMEI thiết bị check sim các kiểu 
+                xử lí trường hợp server chết
+            */
             //can lay du lieu tu spi (doc tu gd32 qua uart) roi xu li
 
             if (1)//khi can gui du lieu qua spi

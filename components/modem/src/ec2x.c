@@ -38,6 +38,8 @@
 #define MODEM_MAX_ACCESS_TECH_STR_LEN   64
 #define MODEM_MAX_NETWORK_BAND_STR_LEN  64
 
+static bool timeout_with_4g_ec2x = false;
+
 /**
  * @brief Macro defined for error checking
  *
@@ -64,6 +66,8 @@ typedef struct
 } ec2x_modem_dce_t;
 
 ec2x_modem_dce_t *ec2x_dce = NULL;
+extern char * GSM_IMEI[16];
+extern SemaphoreHandle_t GSM_Sem;
 
 extern void device_reboot(uint8_t reason);
 // extern void gsm_hw_ctrl_power_en(uint8_t ctrl);
@@ -1002,6 +1006,7 @@ static void gsm_manager_task(void *arg)
     uint8_t gsm_init_step = 0;
     bool gsm_init_done = false;
     uint8_t send_at_retry_nb = 0;
+    timeout_with_4g_ec2x = false;
 
     for (;;)
     {
@@ -1022,8 +1027,10 @@ static void gsm_manager_task(void *arg)
                     if (send_at_retry_nb > 15)
                     {
                         ESP_LOGE(TAG, "Modem not response AT command. Reset module...");
+                        timeout_with_4g_ec2x = true;
                         send_at_retry_nb = 0;
                         gsm_reset_module();
+                        xSemaphoreGive(GSM_Sem);
                     }
                 }
                 break;
@@ -1090,6 +1097,7 @@ static void gsm_manager_task(void *arg)
                 if (err == ESP_OK)
                 {
                     ESP_LOGI(TAG, "Get GSM IMEI: %s", ec2x_dce->parent.imei);
+                    memcpy (GSM_IMEI, ec2x_dce->parent.imei, strlen (GSM_IMEI)); //copy IMEI
                     send_at_retry_nb = 0;
                     gsm_init_step++;
                 }
@@ -1270,10 +1278,13 @@ static void gsm_manager_task(void *arg)
                     ESP_LOGI(TAG, "Module name: %s, IMEI: %s", ec2x_dce->parent.name, ec2x_dce->parent.imei);
                     ESP_LOGI(TAG, "SIM IMEI: %s, IMSI: %s", ec2x_dce->parent.imei, ec2x_dce->parent.imsi);
                     ESP_LOGI(TAG, "Network: %s,%s,%s,%s", ec2x_dce->parent.oper, ec2x_dce->parent.act_string,
-                             ec2x_dce->parent.network_band, ec2x_dce->parent.network_channel);
+                            ec2x_dce->parent.network_band, ec2x_dce->parent.network_channel);
 
                     ec2x_dce->parent.set_flow_ctrl(&ec2x_dce->parent, MODEM_FLOW_CONTROL_NONE);
-                    //						ec2x_dce->parent.store_profile(&ec2x_dce->parent);	//sáº½ lÆ°u cáº¥u hÃ¬nh baudrate -> khÃ´ng dÃ¹ng!
+
+                   
+
+                    //ec2x_dce->parent.store_profile(&ec2x_dce->parent);	//sáº½ lÆ°u cáº¥u hÃ¬nh baudrate -> khÃ´ng dÃ¹ng!
 
                     /* Get signal quality */
                     uint32_t rssi = 0, ber = 0;
@@ -1332,7 +1343,6 @@ static void gsm_manager_task(void *arg)
                 break;
             }
         }
-
         vTaskDelay(1000 / portTICK_RATE_MS);
     }
 
@@ -1590,7 +1600,7 @@ modem_dce_t *ec2x_init(modem_dte_t *dte)
     //Deactive PowerKey
     ESP_LOGI(TAG, "Deactive power key\r\n");
     gsm_hw_ctrl_power_key(0);
-//              no need en_pin 
+//  no need en_pin 
 /*
     //Turn off Vbat +4V2
     gsm_hw_ctrl_power_en(0);
@@ -1613,8 +1623,14 @@ modem_dce_t *ec2x_init(modem_dte_t *dte)
 
     ESP_LOGI(TAG, "Start GSM manager task\r\n");
     xTaskCreate(gsm_manager_task, "gsm_manager_task", 4 * 1024, NULL, 5, NULL);
-
+    xSemaphoreTake (GSM_Sem, 20000/ portTICK_PERIOD_MS);
+    
 //    ESP_LOGI(TAG, "ec2x_init exit!");
+    xSemaphoreGive(GSM_Sem);
+    if (timeout_with_4g_ec2x)
+    {
+        goto err;
+    }
 
     return &(ec2x_dce->parent);
 //err_io:
