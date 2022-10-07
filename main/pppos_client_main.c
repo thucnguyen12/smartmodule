@@ -73,7 +73,7 @@
 //
 #include "app_mqtt.h"
 #include "cJSON.h"
-#include "spi_eeprom.h"
+//#include "spi_eeprom.h"
 
 #define BROKER_URL "mqtt://mqtt.eclipseprojects.io:1883"
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_PSK
@@ -634,9 +634,10 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
         break;
     case MIN_ID_RECEIVE_HEARTBEAT_MSG:
         break;
-    case MIN_ID_RECIEVE_SPI_FROM_GD32:
-        break;
     case MIN_ID_RECEIVE_BEACON_MSG:
+        break;
+    case MIN_ID_PING_RESPONSE:
+        ESP_LOGI (TAG, "ping gd 32 ok, uart pass");
         break;
     default:
         break;
@@ -795,12 +796,12 @@ void app_main(void)
         .source_clk = UART_SCLK_APB,
         };
     uart_driver_install(UART_NUM_1, BUF_SIZE * 2, BUF_SIZE * 2, 512, &uart1_queue, 0);
-    uart_driver_install(UART_NUM_0, BUF_SIZE * 2, BUF_SIZE * 2, 512, &uart0_queue, 0);
+    //uart_driver_install(UART_NUM_0, BUF_SIZE * 2, BUF_SIZE * 2, 512, &uart0_queue, 0);
     uart_param_config(UART_NUM_1, &uart_config);
-    uart_param_config(UART_NUM_0, &uart_config);        
+    //uart_param_config(UART_NUM_0, &uart_config);        
     uart_set_pin(UART_NUM_1, GPIO_TX1, GPIO_RX1, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);//uart for connectivity from esp to gd
     //ESP32 <==> 4G MODULE
-    uart_set_pin(UART_NUM_0, GPIO_TX0, GPIO_RX0, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE); //uart for gsm
+    //uart_set_pin(UART_NUM_0, GPIO_TX0, GPIO_RX0, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE); //uart for gsm
 
     lwrb_init (&data_uart_module_rb, uart_buffer, UART_RINGBUFF_SIZE); //init lwrb
     m_min_setting.get_ms = sys_get_ms;
@@ -833,8 +834,8 @@ void app_main(void)
     esp_modem_dte_config_t dte_config = ESP_MODEM_DTE_DEFAULT_CONFIG();
     /* setup UART specific configuration based on kconfig options */
 
-    dte_config.tx_io_num = GPIO_TX1;
-    dte_config.rx_io_num = GPIO_RX1;
+    dte_config.tx_io_num = GPIO_TX0;
+    dte_config.rx_io_num = GPIO_RX0;
     dte_config.rts_io_num = 0;
     dte_config.cts_io_num = 0;
     dte_config.rx_buffer_size = CONFIG_EXAMPLE_MODEM_UART_RX_BUFFER_SIZE;
@@ -880,9 +881,9 @@ void app_main(void)
     eth_phy_config_t phy_config = ETH_PHY_DEFAULT_CONFIG();
 
     phy_config.phy_addr = 1;
-    phy_config.reset_gpio_num = 5;
-    mac_config.smi_mdc_gpio_num = 23;
-    mac_config.smi_mdio_gpio_num = 18;
+    phy_config.reset_gpio_num = CONFIG_ETH_PHY_RST_GPIO;
+    mac_config.smi_mdc_gpio_num = CONFIG_ETH_MDC_GPIO;
+    mac_config.smi_mdio_gpio_num = CONFIG_ETH_MDIO_GPIO;
     esp_eth_mac_t *mac = esp_eth_mac_new_esp32(&mac_config);
     esp_eth_phy_t *phy = esp_eth_phy_new_ip101(&phy_config);
     esp_eth_config_t config = ETH_DEFAULT_CONFIG(mac, phy);
@@ -892,7 +893,7 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_netif_attach(eth_netif, esp_eth_new_netif_glue(eth_handle)));
     ESP_LOGI (TAG, "netif attach done");
     // end ethernet
-
+/*
     // eeprom config/////////////////////////////////////////////////////////////////////////////////////////////
     {
         spi_bus_config_t buscfg={
@@ -915,8 +916,9 @@ void app_main(void)
         ret = spi_eeprom_init(&eeprom_config, &eeprom_handle);
         ESP_ERROR_CHECK(ret);
         ret = spi_eeprom_write_enable(eeprom_handle);
-    ESP_ERROR_CHECK(ret);
+        ESP_ERROR_CHECK(ret);
     }
+*/
     /* Register event handler */
     if (dte != NULL)
     {
@@ -1029,7 +1031,7 @@ void app_main(void)
 
     static uint32_t now;
     static uint32_t last_tick_cnt = 0;
-    while(1) 
+    while(1)
     {
         ESP_ERROR_CHECK(esp_task_wdt_reset());
         ESP_LOGI(TAG, "PROTOCOL USE: %d ", protocol_using);
@@ -1201,7 +1203,17 @@ void app_main(void)
                 // ping gd32 while being alive
                 send_min_data ((min_msg_t*) &ping_min_msg);
                 last_tick_cnt = now;
+                //example 
+                /*
+                char str_header [64];
+                make_mqtt_topic_header (HEART_BEAT_HEADER, "bytech", GSM_IMEI, str_header);
+                fire_status_t fire_info_heartbeat;
+                char str_payload[256];
+                make_fire_status_payload (&fire_info_heartbeat, str_payload);
+                int msg_id = esp_mqtt_client_publish(mqtt_client, str_header, str_payload, 0, 0, 0);
+                */
             }
+
             /*
                 lấy thông tin từ mqtt gửi xuống ble
                 định kì nhận bản tin heartbeat gửi lên topic
