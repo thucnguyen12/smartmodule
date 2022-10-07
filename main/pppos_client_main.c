@@ -54,6 +54,7 @@
 #include "hal/cpu_hal.h"
 #include "hal/emac_hal.h"
 #include "esp_eth.h"
+#include "esp_eth_mac.h"
 //watchdog task
 #include "esp_task_wdt.h"
 
@@ -96,6 +97,32 @@
 #define PIN_NUM_MOSI    23
 #define PIN_NUM_CLK     19
 #define PIN_NUM_CS      13
+
+#define ETH_MAC_CONFIG()                                  \
+    {                                                     \
+        .sw_reset_timeout_ms = 100,                       \
+        .rx_task_stack_size = 2048,                       \
+        .rx_task_prio = 15,                               \
+        .smi_mdc_gpio_num = 2,                           \
+        .smi_mdio_gpio_num = 15,                          \
+        .flags = 0,                                       \
+        .interface = EMAC_DATA_INTERFACE_RMII,            \
+        .clock_config =                                   \
+        {                                                 \
+            .rmii =                                       \
+            {                                             \
+                .clock_mode = EMAC_CLK_DEFAULT,           \
+                .clock_gpio = EMAC_CLK_IN_GPIO            \
+            }                                             \
+        }                                                 \
+    }
+#define ETH_PHY_DEFAULT_CONFIG()           \
+    {                                      \
+        .phy_addr = ESP_ETH_PHY_ADDR_AUTO, \
+        .reset_timeout_ms = 100,           \
+        .autonego_timeout_ms = 4000,       \
+        .reset_gpio_num = CONFIG_ETH_PHY_RST_GPIO               \
+    }
 
 static const char *TAG = "pppos_example";
 static EventGroupHandle_t event_group = NULL;
@@ -877,7 +904,7 @@ void app_main(void)
     esp_netif_t *eth_netif = esp_netif_new(&cfg);
 
     // Init MAC and PHY configs to default
-    eth_mac_config_t mac_config = ETH_MAC_DEFAULT_CONFIG();
+    eth_mac_config_t mac_config = ETH_MAC_CONFIG();
     eth_phy_config_t phy_config = ETH_PHY_DEFAULT_CONFIG();
 
     phy_config.phy_addr = 1;
