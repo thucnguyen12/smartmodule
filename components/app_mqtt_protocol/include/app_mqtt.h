@@ -35,7 +35,6 @@ typedef struct
 } __attribute__((packed)) fire_status_t;
 
 typedef struct 
-
 {
     int fire_status;
     int csq;
@@ -115,13 +114,44 @@ typedef enum
     OTA_HEADER
 } header_type_t;
 
+typedef struct __attribute((packed))
+{
+    uint8_t netkey[16];
+    uint8_t appkey[16];
+} app_provision_key_t;
+
+typedef struct
+{
+    app_provision_key_t provision;
+    uint32_t iv_index;
+    uint32_t sequence_number;
+}__attribute((packed)) ble_config_t;
+
+
 typedef struct 
 {
     header_type_t header;
     char *payload;
 } app_mqtt_msg_t;
 
-void make_mqtt_topic_header(header_type_t header_type ,char *topic_hr, char *IMEI, char* str_out);
 
+typedef struct __attribute((packed))
+{
+  uint32_t alarm_value;
+  uint16_t sensor_count;
+  uint8_t gateway_mac[6];
+  app_provision_key_t mesh_key;
+  uint8_t in_pair_mode;
+}app_beacon_ping_msg_t;
+/*
+typedef struct __attribute((packed))
+{
+  uint8_t device_mac[6];
+  uint8_t device_type;// Maybe Bitfield
+  app_beacon_tid_t beacon_tid;
+  uint8_t battery;
+}app_beacon_msg_t;
+*/
+void make_mqtt_topic_header(header_type_t header_type ,char *topic_hr, char *IMEI, char* str_out);
 
 #endif

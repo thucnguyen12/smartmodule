@@ -75,11 +75,13 @@
 #include "app_mqtt.h"
 #include "cJSON.h"
 //#include "spi_eeprom.h"
+#include "app_uart.h"
+
 
 #define BROKER_URL "mqtt://mqtt.eclipseprojects.io:1883"
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_PSK
 
-#define DEFAULT_PROTOCOL WIFI_PROTOCOL
+#define DEFAULT_PROTOCOL GSM_4G_PROTOCOL
 
 #define EXAMPLE_PING_IP            "www.google.com"
 #define EXAMPLE_PING_COUNT         5
@@ -97,32 +99,6 @@
 #define PIN_NUM_MOSI    23
 #define PIN_NUM_CLK     19
 #define PIN_NUM_CS      13
-
-#define ETH_MAC_CONFIG()                                  \
-    {                                                     \
-        .sw_reset_timeout_ms = 100,                       \
-        .rx_task_stack_size = 2048,                       \
-        .rx_task_prio = 15,                               \
-        .smi_mdc_gpio_num = 2,                           \
-        .smi_mdio_gpio_num = 15,                          \
-        .flags = 0,                                       \
-        .interface = EMAC_DATA_INTERFACE_RMII,            \
-        .clock_config =                                   \
-        {                                                 \
-            .rmii =                                       \
-            {                                             \
-                .clock_mode = EMAC_CLK_DEFAULT,           \
-                .clock_gpio = EMAC_CLK_IN_GPIO            \
-            }                                             \
-        }                                                 \
-    }
-#define ETH_PHY_DEFAULT_CONFIG()           \
-    {                                      \
-        .phy_addr = ESP_ETH_PHY_ADDR_AUTO, \
-        .reset_timeout_ms = 100,           \
-        .autonego_timeout_ms = 4000,       \
-        .reset_gpio_num = CONFIG_ETH_PHY_RST_GPIO               \
-    }
 
 static const char *TAG = "pppos_example";
 static EventGroupHandle_t event_group = NULL;
@@ -156,6 +132,12 @@ static min_frame_cfg_t m_min_setting = MIN_DEFAULT_CONFIG();
 
 static const min_msg_t ping_min_msg = {
     .id = MIN_ID_PING_ESP_ALIVE,
+    .len = 0,
+    .payload = NULL
+};
+
+static const min_msg_t ping_min_msg_nonsen = {
+    .id = MIN_ID_PING_ESP_DEAD,
     .len = 0,
     .payload = NULL
 };
@@ -657,11 +639,15 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
     switch (frame->id)
     {
     case MIN_ID_RECIEVE_SPI_FROM_GD32:
-        //handle spi data
+        {
+            uint8_t data_rev_from_spi[256];
+            memcpy (data_rev_from_spi, frame->payload, sizeof (data_rev_from_spi));
+        }
         break;
     case MIN_ID_RECEIVE_HEARTBEAT_MSG:
         break;
-    case MIN_ID_RECEIVE_BEACON_MSG:
+    case MIN_ID_PING_ESP_ALIVE:
+        ESP_LOGI (TAG, "test ping gd 32 ok, uart pass");
         break;
     case MIN_ID_PING_RESPONSE:
         ESP_LOGI (TAG, "ping gd 32 ok, uart pass");
@@ -742,62 +728,6 @@ void deinit_interface (protocol_type protocol)
 
 void app_main(void)
 {
-
-/*/
-    this space to test code and write what need to do
-    
-    esp32_gpio_config(); //in this function we need config for GPIO in file defination
-    {
-        // work flow 
-        //ESP32 <===> GD32
-        // => UART CONFIG
-        uart_config_t uart_config = {
-        .baud_rate = 115200,
-        .data_bits = UART_DATA_8_BITS,
-        .parity    = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .source_clk = UART_SCLK_APB,
-        };
-        //Install UART driver, and get the queue.
-        uart_driver_install(UART_NUM_1, BUF_SIZE * 2, BUF_SIZE * 2, 20, &uart1_queue, 0);
-        uart_param_config(UART_NUM_1, &uart_config);        
-        uart_set_pin(UART_NUM_1, GPIO_TX1, GPIO_RX1, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-        //ESP32 <==> 4G MODULE
-        gsm_gpio_config();
-        ==>config as same as uart
-        uart_set_pin(UART_NUM_1_0, GPIO_TX0, GPIO_RX0, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE); //uart for gsm
-        {
-            //CONFIG ETH, 4G AND WIFI
-                // Initialize TCP/IP network interface (should be called only once in application)
-            ESP_ERROR_CHECK(esp_netif_init());
-            // Create default event loop that running in background
-            ESP_ERROR_CHECK(esp_event_loop_create_default());
-
-#if CONFIG_EXAMPLE_USE_INTERNAL_ETHERNET
-            // Create new default instance of esp-netif for Ethernet
-            esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
-            esp_netif_t *eth_netif = esp_netif_new(&cfg);
-             // Init MAC and PHY configs to default
-            eth_mac_config_t mac_config = ETH_MAC_DEFAULT_CONFIG();
-            eth_phy_config_t phy_config = ETH_PHY_DEFAULT_CONFIG();
-
-            phy_config.phy_addr = 1;
-            phy_config.reset_gpio_num = CONFIG_ETH_PHY_RST_GPIO;
-            mac_config.smi_mdc_gpio_num = CONFIG_ETH_MDC_GPIO;
-            mac_config.smi_mdio_gpio_num = CONFIG_ETH_MDIO_GPIO;
-            esp_eth_mac_t *mac = esp_eth_mac_new_esp32(&mac_config);
-
-            esp_eth_phy_t *phy = esp_eth_phy_new_ip101(&phy_config);
-                esp_eth_config_t config = ETH_DEFAULT_CONFIG(mac, phy);
-            esp_eth_handle_t eth_handle = NULL;
-            ESP_ERROR_CHECK(esp_eth_driver_install(&config, &eth_handle));
-            //attach Ethernet driver to TCP/IP stack
-            ESP_ERROR_CHECK(esp_netif_attach(eth_netif, esp_eth_new_netif_glue(eth_handle)));
-        }        
-    }
-
-/*/
 #warning "need gpio config"
     gsm_gpio_config ();
     
@@ -829,7 +759,7 @@ void app_main(void)
     uart_set_pin(UART_NUM_1, GPIO_TX1, GPIO_RX1, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);//uart for connectivity from esp to gd
     //ESP32 <==> 4G MODULE
     //uart_set_pin(UART_NUM_0, GPIO_TX0, GPIO_RX0, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE); //uart for gsm
-
+    
     lwrb_init (&data_uart_module_rb, uart_buffer, UART_RINGBUFF_SIZE); //init lwrb
     m_min_setting.get_ms = sys_get_ms;
     m_min_setting.last_rx_time = 0x00;
@@ -856,6 +786,34 @@ void app_main(void)
     event_group = xEventGroupCreate();
     GSM_Sem = xSemaphoreCreateMutex();
     mqtt_info_queue = xQueueCreate(1, sizeof(mqtt_info_struct));
+    
+     xTaskCreate(uart_event_task, "uart_event_task", 2048, NULL, 12, NULL);
+//   dce = ec600s_init (dte); // dce init
+    //wdt init
+    ESP_ERROR_CHECK(esp_task_wdt_init(TWDT_TIMEOUT_S, false));
+    //subcribe this task and checks it
+    ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
+    ESP_ERROR_CHECK(esp_task_wdt_status(NULL));
+    while (1)
+    {
+        ESP_ERROR_CHECK(esp_task_wdt_reset());
+        
+        static uint32_t count =0;
+        count++;
+        if (count > 30)
+        {
+            send_min_data ((min_msg_t*) &ping_min_msg_nonsen);
+            ESP_LOGI (TAG, "prepare to reset now");
+           
+        }
+        else
+        {
+            send_min_data ((min_msg_t*) &ping_min_msg);
+            ESP_LOGI (TAG, "Send ping requesst");
+        }
+        
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+    }
 
     /* create dte object */
     esp_modem_dte_config_t dte_config = ESP_MODEM_DTE_DEFAULT_CONFIG();
@@ -886,10 +844,12 @@ void app_main(void)
     void *modem_netif_adapter;
 */
     
+   
+    
     if(dce == NULL)
- //   dce = ec600s_init (dte); // dce init
     dce = ec2x_init (dte);
-    xSemaphoreTake (GSM_Sem, 10000/ portTICK_PERIOD_MS);
+    xSemaphoreTake (GSM_Sem, portMAX_DELAY);
+    xSemaphoreTake (GSM_Sem, portMAX_DELAY);
     // GSM_IMEI[16]; store gsm imei
     if(dce == NULL)
     {
@@ -904,17 +864,18 @@ void app_main(void)
     esp_netif_t *eth_netif = esp_netif_new(&cfg);
 
     // Init MAC and PHY configs to default
-    eth_mac_config_t mac_config = ETH_MAC_CONFIG();
+    eth_mac_config_t mac_config = ETH_MAC_DEFAULT_CONFIG();
     eth_phy_config_t phy_config = ETH_PHY_DEFAULT_CONFIG();
-
-    phy_config.phy_addr = 1;
+    // reinit gpio
+    // phy_config.phy_addr = 0;
     phy_config.reset_gpio_num = CONFIG_ETH_PHY_RST_GPIO;
     mac_config.smi_mdc_gpio_num = CONFIG_ETH_MDC_GPIO;
     mac_config.smi_mdio_gpio_num = CONFIG_ETH_MDIO_GPIO;
+
     esp_eth_mac_t *mac = esp_eth_mac_new_esp32(&mac_config);
     esp_eth_phy_t *phy = esp_eth_phy_new_ip101(&phy_config);
     esp_eth_config_t config = ETH_DEFAULT_CONFIG(mac, phy);
-    //esp_eth_handle_t eth_handle = NULL;
+     
     ESP_ERROR_CHECK(esp_eth_driver_install(&config, &eth_handle));
     /* attach Ethernet driver to TCP/IP stack */
     ESP_ERROR_CHECK(esp_netif_attach(eth_netif, esp_eth_new_netif_glue(eth_handle)));
@@ -954,11 +915,6 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, &eth_event_handler, NULL)); //  FOR ETH
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &got_ip_event_handler, NULL)); // FOR IP
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_PPP_GOT_IP, &got_ip_event_handler, NULL)); // FOR IP
-    //wdt init
-    ESP_ERROR_CHECK(esp_task_wdt_init(TWDT_TIMEOUT_S, false));
-    //subcribe this task and checks it
-    ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
-    ESP_ERROR_CHECK(esp_task_wdt_status(NULL));
 
     ESP_LOGI (TAG, "BEGIN WIFI");
     app_wifi_connect (wifi_name, wifi_pass);
@@ -1088,7 +1044,7 @@ void app_main(void)
             {
                 ESP_LOGE(TAG, "UNEXPECTED EVENT");
             }
-        } 
+        }
         else if ((protocol_using != ETHERNET_PROTOCOL) && (protocol_using != WIFI_PROTOCOL))
         {
             protocol_using = ETHERNET_PROTOCOL;
@@ -1208,7 +1164,7 @@ void app_main(void)
             if ( (uxBits & MQTT_DIS_CONNECT_BIT) == MQTT_DIS_CONNECT_BIT)
             {
                 ESP_LOGI (TAG, "mqtt disconnected bitrev");
-                // network_connected = false;
+                //network_connected = false;
                 change_protocol_using_to (ETHERNET_PROTOCOL);
                 //app_time();
                 vTaskDelay(5 / portTICK_PERIOD_MS);
@@ -1244,7 +1200,7 @@ void app_main(void)
             /*
                 lấy thông tin từ mqtt gửi xuống ble
                 định kì nhận bản tin heartbeat gửi lên topic
-                lấy đc IMEI thiết bị check sim các kiểu 
+                lấy đc IMEI thiết bị check sim các kiểu
                 xử lí trường hợp server chết
             */
             //can lay du lieu tu spi (doc tu gd32 qua uart) roi xu li
