@@ -25,6 +25,8 @@
 
 static const char *TAG = "app_time_sync";
 
+static const uint8_t day_in_month[12] = {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+
 void time_sync_notification_cb(struct timeval *tv)
 {
 
@@ -93,7 +95,7 @@ uint32_t app_time(void)
     date_time_t time_now_struct;
     if ((timeinfo.tm_hour - last_timeinfo.tm_hour) < 1)
     {
-        return;
+        return 0;
     }
     // need update time before get localtime
     time(&now);

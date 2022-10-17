@@ -25,6 +25,24 @@ typedef struct
 	uint8_t weekday;
 } date_time_t;
 
+typedef enum
+{
+	NO_CONNECT,
+	WIFI_CONNECT,
+	ETH_CONNECT,
+	GSM_CONNECT
+} network_status_t;
+
+typedef struct
+{
+	uint32_t timestamp_count_by_second;
+	network_status_t  network_status;
+	bool need_update_time;
+} esp_status_infor_t;
+
+
+#define FIRSTYEAR 2000 // start year
+#define FIRSTDAY 6	   // 0 = Sunday
 
 
 uint32_t app_time(void);

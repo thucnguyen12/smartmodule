@@ -81,7 +81,7 @@
 #define BROKER_URL "mqtt://mqtt.eclipseprojects.io:1883"
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_PSK
 
-#define DEFAULT_PROTOCOL GSM_4G_PROTOCOL
+#define DEFAULT_PROTOCOL WIFI_PROTOCOL
 
 #define EXAMPLE_PING_IP            "www.google.com"
 #define EXAMPLE_PING_COUNT         5
@@ -106,7 +106,7 @@ static const int CONNECT_BIT = BIT0;
 static const int STOP_BIT = BIT1;
 static const int GOT_DATA_BIT = BIT2;
 static const int MQTT_DIS_CONNECT_BIT = BIT3;
-static const int WAIT_BIT = BIT4; 
+static const int UPDATE_BIT = BIT4; 
 static const int MQTT_CONNECT_BIT = BIT5;
 TaskHandle_t m_uart_task = NULL;
 SemaphoreHandle_t GSM_Sem;
@@ -136,11 +136,11 @@ static const min_msg_t ping_min_msg = {
     .payload = NULL
 };
 
-static const min_msg_t ping_min_msg_nonsen = {
-    .id = MIN_ID_PING_ESP_DEAD,
-    .len = 0,
-    .payload = NULL
-};
+// static const min_msg_t ping_min_msg_nonsen = {
+//     .id = MIN_ID_PING_ESP_DEAD,
+//     .len = 0,
+//     .payload = NULL
+// };
 
 typedef enum
 {
@@ -410,7 +410,7 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
         
         if (strstr (event->topic, "/update") && (strstr (event->data, "begin")))
         {
-            xEventGroupSetBits(event_group, WAIT_BIT);
+            xEventGroupSetBits(event_group, UPDATE_BIT);
             ESP_LOGI(TAG, "set bit update");
             //=>> can check bit
         }
@@ -792,26 +792,26 @@ void app_main(void)
     //subcribe this task and checks it
     ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
     ESP_ERROR_CHECK(esp_task_wdt_status(NULL));
-    while (1)
-    {
-        ESP_ERROR_CHECK(esp_task_wdt_reset());
+    // while (1)
+    // {
+    //     ESP_ERROR_CHECK(esp_task_wdt_reset());
         
-        static uint32_t count =0;
-        count++;
-        if (count > 30)
-        {
-            send_min_data ((min_msg_t*) &ping_min_msg_nonsen);
-            ESP_LOGI (TAG, "prepare to reset now");
+    //     static uint32_t count =0;
+    //     count++;
+    //     if (count > 30)
+    //     {
+    //         send_min_data ((min_msg_t*) &ping_min_msg_nonsen);
+    //         ESP_LOGI (TAG, "prepare to reset now");
            
-        }
-        else
-        {
-            send_min_data ((min_msg_t*) &ping_min_msg);
-            ESP_LOGI (TAG, "Send ping requesst");
-        }
+    //     }
+    //     else
+    //     {
+    //         send_min_data ((min_msg_t*) &ping_min_msg);
+    //         ESP_LOGI (TAG, "Send ping requesst");
+    //     }
         
-        vTaskDelay(100 / portTICK_PERIOD_MS);
-    }
+    //     vTaskDelay(100 / portTICK_PERIOD_MS);
+    // }
 
     /* create dte object */
     esp_modem_dte_config_t dte_config = ESP_MODEM_DTE_DEFAULT_CONFIG();
@@ -846,8 +846,7 @@ void app_main(void)
     
     if(dce == NULL)
     dce = ec2x_init (dte);
-    xSemaphoreTake (GSM_Sem, portMAX_DELAY);
-    xSemaphoreTake (GSM_Sem, portMAX_DELAY);
+    xSemaphoreTake (GSM_Sem, 200000);
     // GSM_IMEI[16]; store gsm imei
     if(dce == NULL)
     {
@@ -906,7 +905,7 @@ void app_main(void)
     }
 */
     /* Register event handler */
-    if (dte != NULL)
+    if (dce != NULL)
     {
         ESP_ERROR_CHECK(esp_modem_set_event_handler(dte, modem_event_handler, ESP_EVENT_ANY_ID, NULL)); //FOR MODEM
     }
@@ -1170,22 +1169,67 @@ void app_main(void)
                 mqtt_server_ready = false;
                 break;
             }
-            uint32_t timstamp_now = app_time();
+            uint32_t timestamp_now = app_time();
             //need send it to gd32
-            if (timstamp_now)
+            static esp_status_infor_t  esp_status_infor;
+            min_msg_t syn_time_and_status_msg;
+            if (timestamp_now)
             {
                 // if get time update send it to gd 32
-                min_msg_t syn_time_msg;
-                syn_time_msg.id = MIN_ID_TIMESTAMP;
-                syn_time_msg.payload = timstamp_now;
-                syn_time_msg.len = sizeof (uint32_t);
-                send_min_data (&syn_time_msg);
+                // check network status
+                esp_status_infor.need_update_time = true;
+                if (wifi_started)
+                {
+                    esp_status_infor.network_status = WIFI_CONNECT;
+                }
+                else if (eth_started)
+                {
+                    esp_status_infor.network_status = ETH_CONNECT;
+                }
+                else if (gsm_started)
+                {
+                    esp_status_infor.network_status = GSM_CONNECT;
+                }
+                else
+                {
+                    esp_status_infor.network_status = NO_CONNECT;
+                }
+                esp_status_infor.timestamp_count_by_second = timestamp_now;
+                syn_time_and_status_msg.id = MIN_ID_TIMESTAMP;
+                syn_time_and_status_msg.payload = &esp_status_infor;
+                syn_time_and_status_msg.len = sizeof (uint32_t);
+                send_min_data (&syn_time_and_status_msg);
             }
-            
+            else
+            {
+                // no need send timestamp just network status
+                esp_status_infor.need_update_time = false;
+                if (wifi_started)
+                {
+                    esp_status_infor.network_status = WIFI_CONNECT;
+                }
+                else if (eth_started)
+                {
+                    esp_status_infor.network_status = ETH_CONNECT;
+                }
+                else if (gsm_started)
+                {
+                    esp_status_infor.network_status = GSM_CONNECT;
+                }
+                else
+                {
+                    esp_status_infor.network_status = NO_CONNECT;
+                }
+                esp_status_infor.timestamp_count_by_second = 0;
+                syn_time_and_status_msg.id = MIN_ID_TIMESTAMP;
+                syn_time_and_status_msg.payload = &esp_status_infor;
+                syn_time_and_status_msg.len = sizeof (uint32_t);
+                send_min_data (&syn_time_and_status_msg);
+            }            
 
             //xEventGroupWaitBits(event_group, GOT_DATA_BIT, pdTRUE, pdTRUE, 1000 / portTICK_RATE_MS);
-            ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 5/ portTICK_RATE_MS); 
-            if (ubits & WAIT_BIT)
+            ubits = xEventGroupWaitBits (event_group, UPDATE_BIT, pdTRUE, pdTRUE, 5/ portTICK_RATE_MS); 
+            if (ubits & UPDATE_BIT)
             {
                 xTaskCreate(&advanced_ota_example_task, "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
             }
@@ -1199,15 +1243,14 @@ void app_main(void)
                 last_tick_cnt = now;
                 //example 
                 /*
-                char str_header [64];
-                make_mqtt_topic_header (HEART_BEAT_HEADER, "bytech", GSM_IMEI, str_header);
-                fire_status_t fire_info_heartbeat;
-                char str_payload[256];
-                make_fire_status_payload (&fire_info_heartbeat, str_payload);
-                int msg_id = esp_mqtt_client_publish(mqtt_client, str_header, str_payload, 0, 0, 0);
+                    char str_header [64];
+                    make_mqtt_topic_header (HEART_BEAT_HEADER, "bytech", GSM_IMEI, str_header);
+                    fire_status_t fire_info_heartbeat;
+                    char str_payload[256];
+                    make_fire_status_payload (&fire_info_heartbeat, str_payload);
+                    int msg_id = esp_mqtt_client_publish(mqtt_client, str_header, str_payload, 0, 0, 0);
                 */
             }
-
             /*
                 lấy thông tin từ mqtt gửi xuống ble
                 định kì nhận bản tin heartbeat gửi lên topic
