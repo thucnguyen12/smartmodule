@@ -753,13 +753,11 @@ void app_main(void)
         .source_clk = UART_SCLK_APB,
         };
     uart_driver_install(UART_NUM_1, BUF_SIZE * 2, BUF_SIZE * 2, 512, &uart1_queue, 0);
-    //uart_driver_install(UART_NUM_0, BUF_SIZE * 2, BUF_SIZE * 2, 512, &uart0_queue, 0);
-    uart_param_config(UART_NUM_1, &uart_config);
-    //uart_param_config(UART_NUM_0, &uart_config);        
+    uart_param_config(UART_NUM_1, &uart_config);        
     uart_set_pin(UART_NUM_1, GPIO_TX1, GPIO_RX1, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);//uart for connectivity from esp to gd
-    //ESP32 <==> 4G MODULE
-    //uart_set_pin(UART_NUM_0, GPIO_TX0, GPIO_RX0, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE); //uart for gsm
-    
+    // need one more uart for rs485
+    //ESP32 <==> 4G MODULE (in ec2x_init)
+   
     lwrb_init (&data_uart_module_rb, uart_buffer, UART_RINGBUFF_SIZE); //init lwrb
     m_min_setting.get_ms = sys_get_ms;
     m_min_setting.last_rx_time = 0x00;
@@ -1016,6 +1014,7 @@ void app_main(void)
     static uint32_t last_tick_cnt = 0;
     while(1)
     {
+        send_min_data ((min_msg_t*) &ping_min_msg);
         ESP_ERROR_CHECK(esp_task_wdt_reset());
         ESP_LOGI(TAG, "PROTOCOL USE: %d ", protocol_using);
 
@@ -1113,7 +1112,7 @@ void app_main(void)
             BaseType_t res = xQueueReceive (mqtt_info_queue, &mqtt_broker_str, 20000/ portTICK_RATE_MS);
             if (res == pdTRUE)
             {
-                ESP_LOGI (TAG, "Recieve queue\r\n");
+                ESP_LOGD (TAG, "Recieve queue\r\n");
             }
             else if (res == pdFALSE)
             {
@@ -1171,7 +1170,19 @@ void app_main(void)
                 mqtt_server_ready = false;
                 break;
             }
-            app_time();
+            uint32_t timstamp_now = app_time();
+            //need send it to gd32
+            if (timstamp_now)
+            {
+                // if get time update send it to gd 32
+                min_msg_t syn_time_msg;
+                syn_time_msg.id = MIN_ID_TIMESTAMP;
+                syn_time_msg.payload = timstamp_now;
+                syn_time_msg.len = sizeof (uint32_t);
+                send_min_data (&syn_time_msg);
+            }
+            
+
             //xEventGroupWaitBits(event_group, GOT_DATA_BIT, pdTRUE, pdTRUE, 1000 / portTICK_RATE_MS);
             ubits = xEventGroupWaitBits (event_group, WAIT_BIT, pdTRUE, pdTRUE, 5/ portTICK_RATE_MS); 
             if (ubits & WAIT_BIT)

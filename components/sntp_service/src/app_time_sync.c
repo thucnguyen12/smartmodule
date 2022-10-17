@@ -85,11 +85,12 @@ static void obtain_time(void)
     //ESP_ERROR_CHECK( example_disconnect() );
 }
 
-void app_time(void)
+uint32_t app_time(void)
 {
     time_t now;
     static struct tm timeinfo = { 0 };
     static struct tm last_timeinfo = { 0 };
+    date_time_t time_now_struct;
     if ((timeinfo.tm_hour - last_timeinfo.tm_hour) < 1)
     {
         return;
@@ -106,7 +107,132 @@ void app_time(void)
     setenv("TZ", "Etc/GMT+7", 1);
     tzset();
     localtime_r(&now, &timeinfo);
+    // Need convert timeinfo to date_time_t then send it to gd32;
+    time_now_struct.year = timeinfo.tm_year;
+    time_now_struct.month = timeinfo.tm_month;
+    time_now_struct.day = timeinfo.tm_day;
+    time_now_struct.hour = timeinfo.tm_hour;
+    time_now_struct.minute = timeinfo.tm_minute;
+    time_now_struct.second = timeinfo.tm_second;
+    uint32_t timstamp = convert_date_time_to_second(&time_now_struct);
+
     char strftime_buf[64];
     strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
     ESP_LOGI(TAG, "The current date/time in New York is: %s", strftime_buf);
+    return timstamp;
+}
+
+
+void convert_second_to_date_time(uint32_t sec, date_time_t *t, uint8_t Calyear)
+{
+	uint16_t day;
+	uint8_t year;
+	uint16_t days_of_year;
+	uint8_t leap400;
+	uint8_t month;
+
+	t->second = sec % 60;
+	sec /= 60;
+	t->minute = sec % 60;
+	sec /= 60;
+	t->hour = sec % 24;
+
+	if (Calyear == 0)
+		return;
+
+	day = (uint16_t)(sec / 24);
+
+	year = FIRSTYEAR % 100;					   // 0..99
+	leap400 = 4 - ((FIRSTYEAR - 1) / 100 & 3); // 4, 3, 2, 1
+
+	for (;;)
+	{
+		days_of_year = 365;
+		if ((year & 3) == 0)
+		{
+			days_of_year = 366; // leap year
+			if (year == 0 || year == 100 || year == 200)
+			{ // 100 year exception
+				if (--leap400)
+				{ // 400 year exception
+					days_of_year = 365;
+				}
+			}
+		}
+		if (day < days_of_year)
+		{
+			break;
+		}
+		day -= days_of_year;
+		year++; // 00..136 / 99..235
+	}
+	t->year = year + FIRSTYEAR / 100 * 100 - 2000; // + century
+	if (days_of_year & 1 && day > 58)
+	{		   // no leap year and after 28.2.
+		day++; // skip 29.2.
+	}
+
+	for (month = 1; day >= day_in_month[month - 1]; month++)
+	{
+		day -= day_in_month[month - 1];
+	}
+
+	t->month = month; // 1..12
+	t->day = day + 1; // 1..31
+}
+
+uint8_t get_weekday(date_time_t time)
+{
+	time.weekday = (time.day +=
+					time.month < 3 ? time.year-- : time.year - 2,
+					23 * time.month / 9 + time.day + 4 + time.year / 4 -
+						time.year / 100 + time.year / 400);
+	return time.weekday % 7;
+}
+
+uint32_t convert_date_time_to_second(date_time_t *t)
+{
+	uint8_t i;
+	uint32_t result = 0;
+	uint16_t idx, year;
+
+	year = t->year + 2000;
+
+	/* Calculate days of years before */
+	result = (uint32_t)year * 365;
+	if (t->year >= 1)
+	{
+		result += (year + 3) / 4;
+		result -= (year - 1) / 100;
+		result += (year - 1) / 400;
+	}
+
+	/* Start with 2000 a.d. */
+	result -= 730485UL;
+
+	/* Make month an array index */
+	idx = t->month - 1;
+
+	/* Loop thru each month, adding the days */
+	for (i = 0; i < idx; i++)
+	{
+		result += day_in_month[i];
+	}
+
+	/* Leap year? adjust February */
+	if (!(year % 400 == 0 || (year % 4 == 0 && year % 100 != 0)))
+	{
+		if (t->month > 2)
+		{
+			result--;
+		}
+	}
+
+	/* Add remaining days */
+	result += t->day;
+
+	/* Convert to seconds, add all the other stuff */
+	result = (result - 1) * 86400L + (uint32_t)t->hour * 3600 +
+			 (uint32_t)t->minute * 60 + t->second;
+	return result;
 }
