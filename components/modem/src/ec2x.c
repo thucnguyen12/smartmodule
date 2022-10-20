@@ -1122,6 +1122,7 @@ static void gsm_manager_task(void *arg)
                 if (err == ESP_OK)
                 {
                     ESP_LOGI(TAG, "Get GSM IMSI: %s", ec2x_dce->parent.imsi);
+                    memcpy (SIM_IMEI, (char*) (ec2x_dce->parent.imsi), strlen (SIM_IMEI)); //copy IMEI
                     //board_set_device_id(atoi(ec2x_dce->parent.imsi));
                     send_at_retry_nb = 0;
                     gsm_init_step++;

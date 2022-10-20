@@ -106,7 +106,24 @@ typedef struct
 
 typedef struct 
 {
-
+    char topic_hr [20];
+    char mqtt_add [20];
+    char mqtt_user [20];
+    char mqtt_pass [20];
+    int charg_interval;
+    int uncharg_interval;
+    char userPhoneNumber1 [10];
+    char userPhoneNumber2 [10];
+    char userPhoneNumber3 [10];
+    bool buzzerEnable;
+    bool syncAlarm;
+    char networkAddress[20];
+    int smokeSensorWakeupInterval;
+    int smokeSensorHeartbeatInterval;
+    int smokeSensorThresHole;
+    int tempSensorWakeupInterval;
+    int tempSensorHeartbeatInterval;
+    int tempThresHold;
 }__attribute__((packed)) info_config_from_server_t;
 
 typedef enum 
