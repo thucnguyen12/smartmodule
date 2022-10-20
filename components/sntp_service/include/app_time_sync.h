@@ -27,10 +27,10 @@ typedef struct
 
 typedef enum
 {
-	NO_CONNECT,
 	WIFI_CONNECT,
 	ETH_CONNECT,
-	GSM_CONNECT
+	GSM_CONNECT,
+	NO_CONNECT
 } network_status_t;
 
 typedef struct

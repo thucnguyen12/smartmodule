@@ -71,6 +71,19 @@ esp_err_t esp_modem_add_event_handler(modem_dte_t *dte, esp_event_handler_t hand
     return esp_modem_set_event_handler(dte, on_modem_compat_handler, ESP_EVENT_ANY_ID, handler_args);
 }
 
+esp_netif_ip_info_t ip_info;
+esp_netif_inherent_config_t netif_gsm_config = {
+    .flags = ESP_NETIF_FLAG_AUTOUP,
+    .ip_info = (esp_netif_ip_info_t*)&ip_info,
+    .if_key = "gsm",
+    .if_desc = "net_gsm_if"
+    .route_prio = 1;
+};
+esp_netif_config_t cfg = {
+    .base = &netif_gsm_config,                 // use specific behaviour configuration
+    .stack = ESP_NETIF_NETSTACK_DEFAULT_PPP, // use default WIFI-like network stack configuration
+};
+
 esp_err_t esp_modem_setup_ppp(modem_dte_t *dte)
 {
 #if CONFIG_LWIP_PPP_PAP_SUPPORT && defined(CONFIG_EXAMPLE_MODEM_PPP_AUTH_USERNAME) && defined(CONFIG_EXAMPLE_MODEM_PPP_AUTH_PASSWORD)
@@ -81,7 +94,8 @@ esp_err_t esp_modem_setup_ppp(modem_dte_t *dte)
 #error "Unsupported AUTH Negotiation while AUTH_USERNAME and PASSWORD defined"
 #endif
     // Init netif object
-    esp_netif_config_t cfg = ESP_NETIF_DEFAULT_PPP();
+    // esp_netif_config_t cfg = ESP_NETIF_DEFAULT_PPP();
+    
     esp_netif_t *esp_netif = esp_netif_new(&cfg);
     assert(esp_netif);
 

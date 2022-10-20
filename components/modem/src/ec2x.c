@@ -66,7 +66,9 @@ typedef struct
 } ec2x_modem_dce_t;
 
 ec2x_modem_dce_t *ec2x_dce = NULL;
-extern char * GSM_IMEI[16];
+extern char GSM_IMEI[16];
+extern char SIM_IMEI [16];
+extern uint8_t csq;
 extern SemaphoreHandle_t GSM_Sem;
 
 extern void device_reboot(uint8_t reason);
@@ -1300,6 +1302,8 @@ static void gsm_manager_task(void *arg)
                     /* Post event init done to main task to store GSM IMEI */
 //                    esp_modem_dte_t *esp_dte = __containerof(ec2x_dce->parent.dte, esp_modem_dte_t, parent);
 //                    esp_event_post_to(esp_dte->event_loop_hdl, ESP_MODEM_EVENT, ESP_MODEM_EVENT_INIT_DONE, NULL, 0, 0);
+                    // CSQ : NOW
+                    csq = rssi;
 
                     if (rssi != 99)
                     {
@@ -1311,7 +1315,7 @@ static void gsm_manager_task(void *arg)
 
 							/* Setup PPP environment */
 							ESP_LOGI(TAG, "Start ppp\r\n");
-	//						assert(ESP_OK == esp_modem_setup_ppp(ec2x_dce->parent.dte));
+							assert(ESP_OK == esp_modem_setup_ppp(ec2x_dce->parent.dte));
 	                        assert(ESP_OK == esp_modem_start_ppp(ec2x_dce->parent.dte));
 						}
 						else

@@ -59,6 +59,27 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
     }
 }
 
+esp_netif_t* esp_netif_create_wifi_sta(void)
+{
+    esp_netif_ip_info_t ip_info;
+    esp_netif_inherent_config_t netif_wifi_config = {
+        .flags = ESP_NETIF_FLAG_AUTOUP,
+        .ip_info = (esp_netif_ip_info_t*)&ip_info,
+        .if_key = "wifi",
+        .if_desc = "net_wifi_if"
+        .route_prio = 2;
+    };
+    esp_netif_config_t cfg = {
+        .base = &netif_wifi_config,                 // use specific behaviour configuration
+        .stack = ESP_NETIF_NETSTACK_DEFAULT_WIFI_STA, // use default WIFI-like network stack configuration
+    };
+    esp_netif_t *netif = esp_netif_new(&cfg);
+    assert(netif);
+    esp_netif_attach_wifi_station(netif);
+    esp_wifi_set_default_wifi_sta_handlers();
+    return netif;
+}
+
 
 void wifi_init_sta(char *ssid, char* password)
 {

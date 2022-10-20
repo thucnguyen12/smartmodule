@@ -87,20 +87,23 @@ static void obtain_time(void)
     //ESP_ERROR_CHECK( example_disconnect() );
 }
 
+// Get timestamp and update if it is needed
+
 uint32_t app_time(void)
 {
     time_t now;
     static struct tm timeinfo = { 0 };
     static struct tm last_timeinfo = { 0 };
     date_time_t time_now_struct;
-    if ((timeinfo.tm_hour - last_timeinfo.tm_hour) < 1)
-    {
-        return 0;
-    }
+    // if ((timeinfo.tm_hour - last_timeinfo.tm_hour) < 1)
+    // {
+    //     return 0;
+    // }
     // need update time before get localtime
     time(&now);
     localtime_r(&now, &timeinfo);
-    if (timeinfo.tm_year < (2016 - 1900)) {
+    if (timeinfo.tm_year < (2016 - 1900) || ((timeinfo.tm_hour - last_timeinfo.tm_hour) > 1)) // IF TIME NOT SET OR SYNC TIME ONCE AN HOUR 
+	{
         ESP_LOGI(TAG, "Time is not set yet. Connecting to WiFi and getting time over NTP.");
         obtain_time();
         // update 'now' variable with current time

@@ -26,7 +26,7 @@ typedef struct
     int csq;
     int sensor_cnt;
     int battery;
-    int updateTime;
+    uint32_t updateTime;
     char networkInterface[12];
     int temper;
     int fire_zone;
@@ -50,7 +50,7 @@ typedef struct
     char simIMEI[20];
     char firmware[20];
     char loginReson[10];
-    int hardwareVersion;
+    int hardwareVersion[20];
     int updateTime;
     char ExpFwVersion[10];
     char ExpHwVersion[10];
@@ -58,7 +58,7 @@ typedef struct
 
 typedef struct 
 {
-    char mac[20];
+    char mac[6];
     char firmware[20];
     int status;
     int battery;
@@ -104,6 +104,11 @@ typedef struct
     int zoneDelay;
 }__attribute__((packed)) info_config_t;
 
+typedef struct 
+{
+
+}__attribute__((packed)) info_config_from_server_t;
+
 typedef enum 
 {
     HEART_BEAT_HEADER,
@@ -134,11 +139,12 @@ typedef struct
     char *payload;
 } app_mqtt_msg_t;
 
+// msg format get from nrt module
 
 typedef struct __attribute((packed))
 {
   uint32_t alarm_value;
-  uint16_t sensor_count;
+  uint8_t sensor_count;
   uint8_t gateway_mac[6];
   app_provision_key_t mesh_key;
   uint8_t in_pair_mode;
@@ -152,6 +158,65 @@ typedef struct __attribute((packed))
   uint8_t battery;
 }app_beacon_msg_t;
 */
+
+typedef union __attribute((packed))
+{
+    struct __attribute((packed))
+    {
+        uint8_t tid : 4;
+        uint8_t version : 4;    // limited 16 version
+    } info;
+    uint8_t value;
+} app_beacon_tid_t;
+
+typedef union __attribute((packed))
+{
+    struct Properties_t
+    {
+        uint16_t deviceType : 6;        
+        uint16_t alarmState : 1;
+        uint16_t isNewMsg : 1;
+        uint16_t isPairMsg : 1;
+        //uint16_t fwVersion : 5;
+        uint16_t comboSensor : 1;
+        uint16_t reserve : 10;
+    } Name;
+    uint16_t Value;
+}node_proprety_t;
+
+typedef struct
+{
+    uint8_t Data[14];
+    uint8_t Len;
+    uint8_t IsCustom;
+} node_custom_data_t;
+
+typedef struct __attribute((packed))
+{
+  uint8_t device_mac[6];
+  //uint8_t device_type;// Maybe Bitfield
+  app_beacon_tid_t beacon_tid;
+  uint8_t battery;
+  uint8_t is_data_valid;  // Maybe Bitfield 
+  uint8_t fw_verison;
+  //uint8_t msg_type;
+  uint8_t teperature_value;
+  uint8_t smoke_value;
+  uint32_t timestamp; /*<Current tick when receive this value>*/
+  node_proprety_t propreties; /*Node's Propreties*/
+  node_custom_data_t custom_data;
+} app_beacon_data_t;
+
+
+
 void make_mqtt_topic_header(header_type_t header_type ,char *topic_hr, char *IMEI, char* str_out);
+
+void make_fire_status_payload (fire_status_t info, char * str_out);
+void make_firealarm_payload (fire_safe_t info_fire_alarm, char *str_out);
+void make_sensor_info_payload (sensor_info_t sensor, char *str_out);
+void make_device_info_payload (info_device_t device, char * str_out);
+void make_config_info_payload (info_config_t config, char * str_out);
+
+
 
 #endif

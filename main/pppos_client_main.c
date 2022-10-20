@@ -81,6 +81,9 @@
 #define BROKER_URL "mqtt://mqtt.eclipseprojects.io:1883"
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_PSK
 
+#define FIRMWARE_VERSION "0x01"
+#define HARDWARE_VERSION "0x01"
+
 #define DEFAULT_PROTOCOL WIFI_PROTOCOL
 
 #define EXAMPLE_PING_IP            "www.google.com"
@@ -118,7 +121,9 @@ modem_dte_t *dte = NULL;
 // static bool network_connected = false;
 // extern const uint8_t server_cert_pem_start[] asm("_binary_ca_cert_pem_start");
 // extern const uint8_t server_cert_pem_end[] asm("_binary_ca_cert_pem_end");
-char * GSM_IMEI[16];
+char GSM_IMEI [16];
+char SIM_IMEI [16];
+uint8_t csq;
 
 extern QueueHandle_t uart1_queue;
 extern QueueHandle_t uart0_queue;
@@ -158,7 +163,24 @@ uint32_t mqtt_port;
 static char mqtt_username [64];
 static char mqtt_password [64];
 
-extern char recv_buf[64];
+char heart_beat_topic_header [64];
+char fire_alarm_topic_header [64];
+char sensor_topic_header [64];
+char info_topic_header [64];
+char config_topic_header [64];
+
+//min handle variable
+uint8_t payload_buffer [256];
+app_beacon_ping_msg_t* beacon_ping_data_handle;
+app_beacon_data_t* beacon_data_handle;
+fire_status_t alarm_status;
+sensor_info_t sensor_info;
+uint8_t mqtt_payload [512];
+
+info_config_t config_infor_now;
+info_config_from_server_t config_infor_from_server;
+
+//extern char recv_buf[64];
 //General variable
 esp_mqtt_client_handle_t mqtt_client;
 esp_eth_handle_t eth_handle;
@@ -167,6 +189,21 @@ bool mqtt_server_ready = false;
 bool wifi_started = false;
 bool eth_started = false;
 bool gsm_started = false;
+
+//eth netif config
+esp_netif_ip_info_t ip_info;
+esp_netif_inherent_config_t netif_eth_config = {
+    .flags = ESP_NETIF_FLAG_AUTOUP,
+    .ip_info = (esp_netif_ip_info_t*)&ip_info,
+    .if_key = "eth",
+    .if_desc = "net_eth_if"
+    .route_prio = 3;
+};
+esp_netif_config_t cfg = {
+    .base = &netif_eth_config,                 // use specific behaviour configuration
+    .stack = ESP_NETIF_NETSTACK_DEFAULT_ETH, // use default WIFI-like network stack configuration
+};
+
 
 void device_reboot(uint8_t reason)
 {
@@ -382,10 +419,15 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
     switch (event->event_id) {
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
+        //publish info
+        info_device_t device_info;
+        memcpy (device_info.imei, GSM_IMEI);
+        memcpy (device_info.simIMEI, SIM_IMEI);
+        sprintf(device_info.firmware, "%s", FIRMWARE_VERSION);
+        sprintf(device_info.hardwareVersion, "%s", HARDWARE_VERSION);
+        make_device_info_payload (device_info, mqtt_payload);
+        esp_mqtt_client_publish(mqtt_client, info_topic_header, mqtt_payload, 0, 0, 0);
         xEventGroupSetBits(event_group, MQTT_CONNECT_BIT);
-        //msg_id = esp_mqtt_client_subscribe(client, "/topic/esp-pppos", 0);
-        //msg_id = esp_mqtt_client_subscribe(client, "/update", 0);
-        //ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
         break;
     case MQTT_EVENT_DISCONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
@@ -423,13 +465,33 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
 
         if (strstr (event->topic, "/g2d/config/"))
         {
-            // lưu lại
+            memcpy (&config_infor_from_server, event->data, sizeof (info_config_from_server_t));
+            memcpy(config_infor_now.topic_hr, config_infor_from_server.topic_hr, sizeof (config_infor_now.topic_hr));
+            memcpy(config_infor_now.mqtt_add, config_infor_from_server.mqtt_add, sizeof (config_infor_now.topic_hr));
+            memcpy(config_infor_now.mqtt_user, config_infor_from_server.mqtt_user, sizeof (config_infor_now.topic_hr));
+            memcpy(config_infor_now.mqtt_pass, config_infor_from_server.mqtt_pass, sizeof (config_infor_now.topic_hr));
+            memcpy(config_infor_now.userPhoneNumber1, config_infor_from_server.userPhoneNumber1, sizeof (config_infor_now.topic_hr));
+            memcpy(config_infor_now.userPhoneNumber2, config_infor_from_server.userPhoneNumber2, sizeof (config_infor_now.topic_hr));
+            memcpy(config_infor_now.userPhoneNumber3, config_infor_from_server.userPhoneNumber3, sizeof (config_infor_now.topic_hr));
+            memcpy(config_infor_now.networkAddress, config_infor_from_server.networkAddress, sizeof (config_infor_now.topic_hr));
+            config_infor_now.charg_interval = config_infor_from_server.charg_interval;
+            config_infor_now.uncharg_interval = config_infor_from_server.uncharg_interval;
+            config_infor_now.buzzerEnable = config_infor_from_server.buzzerEnable;
+            config_infor_now.syncAlarm = config_infor_from_server.syncAlarm;
+            config_infor_now.smokeSensorWakeupInterval = config_infor_from_server.smokeSensorWakeupInterval;
+            config_infor_now.smokeSensorHeartbeatInterval = config_infor_from_server.smokeSensorHeartbeatInterval;
+            config_infor_now.smokeSensorThresHole = config_infor_from_server.smokeSensorThresHole;
+            config_infor_now.tempSensorHeartbeatInterval = config_infor_from_server.tempSensorHeartbeatInterval;
+            config_infor_now.tempSensorWakeupInterval = config_infor_from_server.smokeSensorWakeupInterval;
+            config_infor_now.tempThresHold = config_infor_from_server.tempThresHold;
+            // lưu lại - can luu vao flash
         }
 
-        if (strstr (event->topic, "/bleConfigInfo"))
+        if (strstr (event->topic, "/bleConfigInfo"))/// CONFIG INFO GET FROM SERVER
         {
-            /*
+            
             ble_info_t ble_config_info;
+            /*
             cJSON* netkey = NULL;
             cJSON* appkey = NULL;
             cJSON* iv_index = NULL;
@@ -471,6 +533,13 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
             }
             //set bit
             */
+            {
+                min_msg_t ble_config_msg;
+                ble_config_msg.id = MIN_ID_SEND_KEY_CONFIG;
+                ble_config_msg.payload = ble_config_info;
+                ble_config_msg.len = sizeof (ble_config_info);
+                send_min_data (&ble_config_msg);
+            }
         }
 
         break;
@@ -592,6 +661,11 @@ void gsm_gpio_config (void)
     gpio_config (&io_config);
 }
 
+void send_current_config ()
+{
+    // config_infor_now.httpDnsName = 
+}
+
 //Callback for user tasks created in app_main()
 void reset_task(void *arg)
 {
@@ -634,6 +708,7 @@ uint32_t sys_get_ms(void)
     return (xTaskGetTickCount() / portTICK_RATE_MS);
 }
 
+
 void min_rx_callback(void *min_context, min_msg_t *frame)
 {
     switch (frame->id)
@@ -644,13 +719,85 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
             memcpy (data_rev_from_spi, frame->payload, sizeof (data_rev_from_spi));
         }
         break;
-    case MIN_ID_RECEIVE_HEARTBEAT_MSG:
+    case MIN_ID_SEND_AND_RECEIVE_HEARTBEAT_MSG:
+        // RECEIVE DATA NEED TO SEND TO MQTT SERVER
+        memcpy (payload_buffer, frame->payload, 256);
+        beacon_ping_data_handle = (app_beacon_ping_msg_t*) payload_buffer;
+        // make payload to send 
+        alarm_status.fire_status = beacon_ping_data_handle->alarm_value;
+        alarm_status.csq = csq;
+        alarm_status.sensor_cnt = beacon_ping_data_handle->sensor_count;
+        alarm_status.battery = 0; /// NEED MONITOR BATTERRY
+        alarm_status.updateTime = app_time ();
+        switch (protocol_using)
+        {
+            case GSM_4G_PROTOCOL:
+                sprintf (alarm_status.networkInterface, "GSM");
+                break;
+            case WIFI_PROTOCOL:
+                sprintf (alarm_status.networkInterface, "WIFI");
+                break;
+            case ETHERNET_PROTOCOL:
+                sprintf (alarm_status.networkInterface, "ETH");
+                break;
+            default:
+                break;
+        }
+        // gsm status
+        if (gsm_started)
+        {
+            alarm_status.networkStatus |= (1 << 8);
+        }
+        else
+        {
+            alarm_status.networkStatus &= ~(1 << 8);
+        }
+        //eth status
+        if (eth_started)
+        {
+            alarm_status.networkStatus |= (1 << 7);
+        }
+        else
+        {
+            alarm_status.networkStatus &= ~(1 << 7);
+        }
+        // wifi status
+        if (wifi_started)
+        {
+            alarm_status.networkStatus |= (1 << 6);
+        }
+        else
+        {
+            alarm_status.networkStatus &= ~(1 << 6);
+        }
+        make_fire_status_payload (alarm_status, mqtt_payload); // Bo truong temper va fireZone
+        esp_mqtt_client_publish(mqtt_client, heart_beat_topic_header, mqtt_payload, 0, 0, 0);
+        break;
+    case MIN_ID_SEND_AND_RECEIVE_BEACON_MSG:
+        memcpy (payload_buffer, frame->payload, 256);
+        beacon_data_handle = (app_beacon_data_t *) payload_buffer;
+        memcpy(sensor_info.mac, beacon_data_handle->device_mac, 6);
+        sprintf (sensor_info.firmware, "%d", beacon_data_handle->fw_verison);
+        if (beacon_data_handle.propreties.Name.alarmState)
+        {
+            sensor_info.status = 1;
+        }
+        else
+        {
+            sensor_info->status = 0;
+        }
+        sensor_info.temperature = beacon_data_handle->teperature_value;
+        sensor_info.smoke = beacon_data_handle->smoke_value;
+        sensor_info.updateTime = app_time ();
+        
+        make_sensor_info_payload (sensor_info, mqtt_payload); 
+        esp_mqtt_client_publish(mqtt_client, sensor_topic_header, mqtt_payload, 0, 0, 0);
         break;
     case MIN_ID_PING_ESP_ALIVE:
-        ESP_LOGI (TAG, "test ping gd 32 ok, uart pass");
+        ESP_LOGI (TAG, "test ping gd32 ok, uart pass");
         break;
     case MIN_ID_PING_RESPONSE:
-        ESP_LOGI (TAG, "ping gd 32 ok, uart pass");
+        ESP_LOGI (TAG, "ping gd 32ok, uart pass");
         break;
     default:
         break;
@@ -857,7 +1004,9 @@ void app_main(void)
     EventBits_t ubits;
 
     // ETHERNET INIT Emac
-    esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
+    
+    //esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
+
     esp_netif_t *eth_netif = esp_netif_new(&cfg);
 
     // Init MAC and PHY configs to default
@@ -1055,7 +1204,6 @@ void app_main(void)
             {
                 ESP_LOGI (TAG, "BEGIN WIFI");
                 app_wifi_connect (wifi_name, wifi_pass);
-                
                 ESP_LOGI (TAG, "WIFI CONNECT");
                 do_ping_cmd(); //pinging to addr 
                 EventBits_t uxBitsPing = xEventGroupWaitBits(s_wifi_event_group, WIFI_PING_TIMEOUT | WIFI_PING_SUCESS, pdTRUE, pdFALSE, portMAX_DELAY);
@@ -1144,16 +1292,28 @@ void app_main(void)
         ESP_LOGI (TAG, "MQTT INIT");
         esp_mqtt_client_start(mqtt_client);
         //register topic
+        //if (co imei thi ms dang ky dc)
         {
             //this is example for heartbeat topic
-            char topic_header [64];
-            make_mqtt_topic_header (HEART_BEAT_HEADER, "bsafe", "12312321_exampleIMEI", topic_header);
+            make_mqtt_topic_header (HEART_BEAT_HEADER, "smart_module", "12312321_exampleIMEI", heart_beat_topic_header);
             int msg_id = esp_mqtt_client_subscribe(mqtt_client, topic_header, 0);
             ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
 
-            make_mqtt_topic_header (FIRE_ALARM_HEADER, "bsafe", "12312321_exampleIMEI", topic_header);
+            make_mqtt_topic_header (FIRE_ALARM_HEADER, "smart_module", "12312321_exampleIMEI", fire_alarm_topic_header);
             msg_id = esp_mqtt_client_subscribe(mqtt_client, topic_header, 0);
             ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+            
+            make_mqtt_topic_header (SENSOR_HEADER, "smart_module", "12312321_exampleIMEI", sensor_topic_header);
+            msg_id = esp_mqtt_client_subscribe(mqtt_client, topic_header, 0);
+            ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+
+            make_mqtt_topic_header (INFO_HEADER, "smart_module", "12312321_exampleIMEI", info_topic_header);
+            msg_id = esp_mqtt_client_subscribe(mqtt_client, topic_header, 0);
+            ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+
+            make_mqtt_topic_header (CONFIG_HEADER, "smart_module", "12312321_exampleIMEI", config_topic_header);
+            msg_id = esp_mqtt_client_subscribe(mqtt_client, topic_header, 0);
+            ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);            
         }
         while (1) //main process loop
         {

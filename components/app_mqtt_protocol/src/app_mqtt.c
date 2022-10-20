@@ -42,25 +42,16 @@ void make_mqtt_topic_header(header_type_t header_type ,char *topic_hr, char *IME
 
 void make_fire_status_payload (fire_status_t info, char * str_out)
 {
-    // chia thanh nhieu loai ban tin
-    if (1)
-    {
-        uint32_t index = 0;
-        index = sprintf (str_out + index, "{\r\n\"fireStatus\":%u\r\n", info.fire_status);
-        index = sprintf (str_out + index, "\"csq\":%u\r\n", info.csq);
-        index = sprintf (str_out + index, "\"connectedSenSor\":%u\r\n", info.sensor_cnt);
-        index = sprintf (str_out + index, "\"battery\":%u\r\n", info.battery);
-        index = sprintf (str_out + index, "\"updateTime\":%u\r\n", info.updateTime);
-        index = sprintf (str_out + index, "\"InTestMode\":%s\r\n", info.inTestmode ? "1":"0");
-        index = sprintf (str_out + index, "\"temperature\":%s\r\n", info.inTestmode ? "1":"0");
-//        if (info.networkInterface == 1 ) // ETH)
-        index = sprintf (str_out + index, "\"networkInterface\":%s\r\n", info.networkInterface);
-//        else
-//        {
-//            index = sprintf (str_out + index, "{\r\n\"networkInterface\":wifi\r\n");
-//        }
-        index = sprintf (str_out + index, "\"fireZone\":%x\r\n}",info.fire_zone);
-    }   
+    uint32_t index = 0;
+    index = sprintf (str_out + index, "{\r\n\"fireStatus\":%u\r\n", info.fire_status);
+    index = sprintf (str_out + index, "\"csq\":%u\r\n", info.csq);
+    index = sprintf (str_out + index, "\"connectedSenSor\":%u\r\n", info.sensor_cnt);
+    index = sprintf (str_out + index, "\"battery\":%u\r\n", info.battery);
+    index = sprintf (str_out + index, "\"updateTime\":%u\r\n", info.updateTime);
+    index = sprintf (str_out + index, "\"InTestMode\":%s\r\n", info.inTestmode ? "1":"0");
+    index = sprintf (str_out + index, "\"temperature\":%s\r\n", info.inTestmode ? "1":"0");
+    index = sprintf (str_out + index, "\"networkInterface\":%s\r\n", info.networkInterface);
+    index = sprintf (str_out + index, "\"fireZone\":%x\r\n}",info.fire_zone);
 }
 
 void make_firealarm_payload (fire_safe_t info_fire_alarm, char *str_out)
@@ -93,7 +84,7 @@ void make_device_info_payload (info_device_t device, char * str_out)
     index = sprintf (str_out + index, "\"simIMEI\":%s\r\n", device.simIMEI);
     index = sprintf (str_out + index, "\"firmware\":%s\r\n", device.firmware);
     index = sprintf (str_out + index, "\"loginReason\":%s\r\n", device.loginReson);
-    index = sprintf (str_out + index, "\"hardwareVersion\":%d\r\n", device.hardwareVersion);
+    index = sprintf (str_out + index, "\"hardwareVersion\":%s\r\n", device.hardwareVersion);
     index = sprintf (str_out + index, "\"updateTime\":%d\r\n", device.updateTime);
     index = sprintf (str_out + index, "\"ExpFwVersion\":%s\r\n", device.ExpFwVersion);
     index = sprintf (str_out + index, "\"ExpHwVersion\":%s\r\n}", device.ExpHwVersion);
