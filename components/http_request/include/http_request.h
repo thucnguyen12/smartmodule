@@ -21,6 +21,7 @@
 #define WEB_SERVER "btwork.bytechjsc.vn"
 #define WEB_PORT "5500"
 #define WEB_PATH "/api/server-info"
+#define HTTP_SERVER "btwork.bytechjsc.vn/api/server-info"
 
 typedef struct 
 {

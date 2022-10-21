@@ -22,6 +22,9 @@
 #include "lwrb.h"
 #include "min.h"
 #include "min_id.h"
+#if USE_APP_CLI
+#include "app_cli.h"
+#endif
 
 #define PATTERN_CHR_NUM    (3)
 
@@ -39,7 +42,7 @@ void uart_event_task(void *pvParameters)
     uart_event_t event;
     size_t buffered_size;
     uint8_t* dtmp = (uint8_t*) malloc(RD_BUF_SIZE);
-    uint8_t* dtmp_uart0 = (uint8_t*) malloc(RD_BUF_SIZE);
+    // uint8_t* dtmp_uart0 = (uint8_t*) malloc(RD_BUF_SIZE);
     for(;;) {
         // need add more uart for 4g, rs485, and so far
         //Waiting for UART event.
@@ -55,6 +58,12 @@ void uart_event_task(void *pvParameters)
                     //ESP_LOGI(TAG, "[UART DATA]: %d", event.size);
                     uart_read_bytes(UART_NUM_1, dtmp, event.size, portMAX_DELAY);
                     min_rx_feed(&m_min_context, (uint8_t *)dtmp, event.size);
+#if USE_APP_CLI
+                    for (size_t i = 0; i < event.size; i++)
+                    {
+                        app_cli_poll(dtmp[i]);
+                    }
+#endif
                     //uart_write_bytes(UART_NUM_1, (const char*) dtmp, event.size); //no need echo
 
                     break;

@@ -15,6 +15,8 @@
 
 #define OTA_CONFIG_ADD_STR "http://192.168.2.241/pppos_client.bin"
 
+char ota_url [128];
+
 
 void advanced_ota_example_task(void *pvParameter);
 

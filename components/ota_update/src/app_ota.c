@@ -84,6 +84,11 @@ void advanced_ota_example_task(void *pvParameter)
         .keep_alive_enable = true,
     };
 
+    if (ota_url != NULL)
+    {
+        MEMCPY (config.url, ota_url, sizeof (config.url));
+    }
+
 #ifdef CONFIG_EXAMPLE_FIRMWARE_UPGRADE_URL_FROM_STDIN
     char url_buf[OTA_URL_SIZE];
     if (strcmp(config.url, "FROM_STDIN") == 0) {

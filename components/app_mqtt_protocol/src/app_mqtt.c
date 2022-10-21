@@ -117,7 +117,7 @@ void make_config_info_payload (info_config_t config, char * str_out)
     index = sprintf (str_out + index, "\"wifiname\":%s\r\n", config.wifiname);
     index = sprintf (str_out + index, "\"wifipass\":%s\r\n", config.wifipass);
     index = sprintf (str_out + index, "\"wifiDisable\":%d\r\n", config.wifiDisable);
-    index = sprintf (str_out + index, "\"reset\":%d\r\n", config.reset);
+    //index = sprintf (str_out + index, "\"reset\":%d\r\n", config.reset);
     index = sprintf (str_out + index, "\"pingMainServer\":%s\r\n", config.pingMainServer);
     index = sprintf (str_out + index, "\"pingBackupServer\":%s\r\n", config.pingBackupServer);
     index = sprintf (str_out + index, "\"inputActiveLevel\":%d\r\n", config.inputActiveLevel);
