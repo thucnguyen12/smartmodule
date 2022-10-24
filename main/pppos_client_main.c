@@ -80,6 +80,10 @@
 //app cli
 #include "app_cli.h"
 
+#include "esp_netif_types.h"
+#include "esp_netif_defaults.h"
+
+
 #define BROKER_URL "mqtt://mqtt.eclipseprojects.io:1883"
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_PSK
 #define IS_WIFI_DISABLE 1
@@ -127,8 +131,14 @@ static const int MQTT_CONNECT_BIT = BIT5;
 SemaphoreHandle_t GSM_Sem;
 SemaphoreHandle_t GSM_Task_tearout;
 //some extern variable
-extern esp_netif_t *esp_netif;
-extern void *modem_netif_adapter;
+// 2 line is from ec600
+//extern esp_netif_t *esp_netif;
+//extern void *modem_netif_adapter;
+// list netif
+extern esp_netif_t *wifi_netif;
+extern esp_netif_t *gsm_esp_netif;
+esp_netif_t *eth_netif;
+
 extern EventGroupHandle_t s_wifi_event_group;
 modem_dte_t *dte = NULL;
 extern char ota_url [128];
@@ -136,7 +146,7 @@ extern char ota_url [128];
 // extern const uint8_t server_cert_pem_start[] asm("_binary_ca_cert_pem_start");
 // extern const uint8_t server_cert_pem_end[] asm("_binary_ca_cert_pem_end");
 // imei
-char GSM_IMEI [16];
+char GSM_IMEI [16] = "not init yet";
 char SIM_IMEI [16];
 uint8_t csq;
 
@@ -161,7 +171,8 @@ typedef enum
 {
     GSM_4G_PROTOCOL,
     WIFI_PROTOCOL,
-    ETHERNET_PROTOCOL
+    ETHERNET_PROTOCOL,
+    PROTOCOL_NONE
 } protocol_type;
 protocol_type protocol_using = DEFAULT_PROTOCOL;
 static char* wifi_name = CONFIG_ESP_WIFI_SSID;
@@ -188,10 +199,10 @@ app_beacon_data_t* beacon_data_handle;
 fire_status_t alarm_status;
 sensor_info_t sensor_info;
 
-uint8_t mqtt_payload [512];
+char mqtt_payload [512];
 char* ota_server_str_buff;
 
-info_config_t config_infor_now;
+static info_config_t config_infor_now;
 info_config_from_server_t config_infor_from_server;
 
 //extern char recv_buf[64];
@@ -210,13 +221,20 @@ esp_netif_inherent_config_t netif_eth_config = {
     .flags = ESP_NETIF_FLAG_AUTOUP,
     .ip_info = (esp_netif_ip_info_t*)&ip_info,
     .if_key = "eth",
-    .if_desc = "net_eth_if"
-    .route_prio = 3;
+    .if_desc = "net_eth_if",
+    .route_prio = 3
+    
 };
 esp_netif_config_t cfg = {
     .base = &netif_eth_config,                 // use specific behaviour configuration
-    .stack = ESP_NETIF_NETSTACK_DEFAULT_ETH, // use default WIFI-like network stack configuration
+    .stack = ESP_NETIF_NETSTACK_DEFAULT_ETH // use default WIFI-like network stack configuration
 };
+
+void send_min_data(min_msg_t *min_msg);
+esp_err_t read_data_from_flash (void *data_read, uint16_t byte_read, const char* key);
+int32_t write_data_to_flash(void *data_write, size_t byte_write, const char* key);
+void init_nvs_flash(void );
+void send_current_config (info_config_t config_infor_now);
 
 //********************* APP CLI VARIABLE ****************************//
 uint32_t cdc_tx(const void *buffer, uint32_t size);
@@ -443,7 +461,6 @@ static void modem_event_handler(void *event_handler_arg, esp_event_base_t event_
 }
 
 
-
 static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
 {
     esp_mqtt_client_handle_t client = event->client;
@@ -453,13 +470,14 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
         ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
         //publish info
         info_device_t device_info;
-        memcpy (device_info.imei, GSM_IMEI);
-        memcpy (device_info.simIMEI, SIM_IMEI);
+        memcpy (device_info.imei, GSM_IMEI, sizeof (GSM_IMEI));
+        memcpy (device_info.simIMEI, SIM_IMEI, sizeof(SIM_IMEI));
         sprintf(device_info.firmware, "%s", FIRMWARE_VERSION);
         sprintf(device_info.hardwareVersion, "%s", HARDWARE_VERSION);
         make_device_info_payload (device_info, mqtt_payload);
-        esp_mqtt_client_publish(mqtt_client, info_topic_header, mqtt_payload, 0, 0, 0);
+        esp_mqtt_client_publish(mqtt_client, info_topic_header, (char*)mqtt_payload, 0, 0, 0);
         // truoc do can doc cau hinh ra tu flash
+        ESP_LOGI (TAG, "READ CONFIG DATA FROM FLASH");
         read_data_from_flash (&config_infor_now, sizeof (info_config_t), NVS_CONFIG_KEY);
 
         send_current_config (config_infor_now);
@@ -537,8 +555,10 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
             config_infor_now.tempSensorWakeupInterval = config_infor_from_server.smokeSensorWakeupInterval;
             config_infor_now.tempThresHold = config_infor_from_server.tempThresHold;
             // lưu lại - can luu vao flash
-            write_data_to_flash (&config_infor_now, sizeof (info_config_t), NVS_CONFIG_KEY);
+            esp_err_t err = write_data_to_flash (&config_infor_now, sizeof (info_config_t), NVS_CONFIG_KEY);
+            ESP_LOGI (TAG, "Write config data to flash: %s", (err = ESP_OK) ? "Fail" : "OK");
             // doc ra tu flash
+            ESP_LOGI (TAG, "Read config data from flash now");
             read_data_from_flash (&config_infor_now, sizeof (info_config_t), NVS_CONFIG_KEY);
             send_current_config (config_infor_now);
         }
@@ -552,15 +572,16 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
             cJSON* appkey = NULL;
             cJSON* iv_index = NULL;
             cJSON* sequence_number = NULL;
-            cJSON* json_test = NULL;
+            cJSON* ble_config_json = NULL;
+
             char* config = strstr (event->data, "{");
-            ble_config_json = parse_json (test);
+            ble_config_json = parse_json (config);
 
             netkey = cJSON_GetObjectItemCaseSensitive (ble_config_json, "netkey");
             if (cJSON_IsString(netkey))
             {
                 ESP_LOGI(TAG,"netkey:\"%s\"\n", netkey->valuestring);
-                memcpy (ble_config_info.netkey, netkey->valuestring, strlen (net_key->valuestring));
+                memcpy (ble_config_info.netkey, netkey->valuestring, strlen (netkey->valuestring));
             }
             appkey = cJSON_GetObjectItemCaseSensitive (ble_config_json, "appkey");
 
@@ -571,16 +592,16 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
             }
            
             iv_index = cJSON_GetObjectItemCaseSensitive (ble_config_json, "iv_index");
-            if (cJSON_IsString(iv_index))
+            if (cJSON_IsNumber(iv_index))
             {
-                ESP_LOGI(TAG,"iv_index:\"%s\"\n", iv_index->valueint);
+                ESP_LOGI(TAG,"iv_index:\"%d\"\n", iv_index->valueint);
                 ble_config_info.iv_index = iv_index->valueint;
             }
             
             sequence_number = cJSON_GetObjectItemCaseSensitive (ble_config_json, "sequence_number");
-            if (cJSON_IsString(sequence_number))
+            if (cJSON_IsNumber(sequence_number))
             {
-                ESP_LOGI(TAG,"sequence_number:\"%s\"\n", sequence_number->valueint);
+                ESP_LOGI(TAG,"sequence_number:\"%d\"\n", sequence_number->valueint);
                 ble_config_info.sequence_number = sequence_number->valueint;
             }
             if (ble_config_json != NULL)
@@ -588,11 +609,10 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
                 cJSON_Delete(ble_config_json);
             }
             //set bit
-            
             {
                 min_msg_t ble_config_msg;
                 ble_config_msg.id = MIN_ID_SEND_KEY_CONFIG;
-                ble_config_msg.payload = ble_config_info;
+                ble_config_msg.payload = &ble_config_info;
                 ble_config_msg.len = sizeof (ble_config_info);
                 send_min_data (&ble_config_msg);
             }
@@ -720,23 +740,27 @@ void send_current_config (info_config_t config_infor_now)
 {
     //config_infor_now.httpDnsName = HTTP_SERVER;
     sprintf (config_infor_now.httpDnsName, HTTP_SERVER);
-    config_infor_now.httpUsername = NULL;
-    config_infor_now.httpDnsPass = NULL;
-    config_infor_now.httpDnsPort = WEB_PORT;
-    config_infor_now.wifiname = CONFIG_ESP_WIFI_SSID;
-    config_infor_now.wifipass = CONFIG_ESP_WIFI_PASSWORD;
+    //thay bang memset
+    // config_infor_now.httpUsername = NULL;
+    // config_infor_now.httpDnsPass = NULL;
+
+    // config_infor_now.httpDnsPort = WEB_PORT;
+    // dung sprintf
+    // config_infor_now.wifiname = CONFIG_ESP_WIFI_SSID;
+    // config_infor_now.wifipass = CONFIG_ESP_WIFI_PASSWORD;
     config_infor_now.wifiDisable = IS_WIFI_DISABLE;
     // config_infor_now.reset = RESET; //bo truong reset
-    config_infor_now.pingMainServer = EXAMPLE_PING_IP;
-    config_infor_now.pingBackupServer = BACKUP_PING_IP;
+    // dung sprintf
+    // config_infor_now.pingMainServer = EXAMPLE_PING_IP;
+    // config_infor_now.pingBackupServer = BACKUP_PING_IP;
     config_infor_now.inputActiveLevel = 1;
-    // Smart module khong ndung 3 truong nay
+    // Smart module khong dung 3 truong nay
     config_infor_now.zoneMinMv = 0; //CONFIG_ZONE_MIN_MV;
     config_infor_now.zoneMaxMv = 0; //CONFIG_ZONE_MAX_MAX;
     config_infor_now.zoneDelay = 0; ///CONFIG_ZONE_DELAY;
     
-    make_config_info_payload (config_infor_now, mqtt_payload);
-    esp_mqtt_client_publish(mqtt_client, config_topic_header, mqtt_payload, 0, 0, 0);
+    make_config_info_payload (config_infor_now, (char*)mqtt_payload);
+    esp_mqtt_client_publish(mqtt_client, config_topic_header, (char*)mqtt_payload, 0, 0, 0);
 }
 //******************************************* NVS PLACE *****************************///
 void init_nvs_flash(void )
@@ -752,38 +776,45 @@ void init_nvs_flash(void )
 }
 
 //  write data in flash
-void write_data_to_flash(void *data_write, size_t byte_write, const char* key)
+int32_t write_data_to_flash(void *data_write, size_t byte_write, const char* key)
 {
     nvs_handle_t my_handle;
+    esp_err_t ret = ESP_OK;
     //OPEN FLASH
-    err = nvs_open("storage", NVS_READWRITE, &my_handle);
+    esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
+    ret |= err;
+
     if (err != ESP_OK) {
         ESP_LOGI(TAG, "Error (%s) opening NVS handle!\n", esp_err_to_name(err));
         // ghi lại gia tri mac dinh và them version control
     } else {
-        ESP_LOGI(TAG, "OPEN Done\n");
-        nvs_set_blob (my_handle, key, data_write, byte_write);
+        ESP_LOGI(TAG, "OPEN Done, Writing data to key %s\n", key);
+        err = nvs_set_blob (my_handle, key, data_write, byte_write);
+        ESP_LOGI(TAG, "%s", (err != ESP_OK) ? "Failed!" : "Done");
+        ret |= err;
+
+        ESP_LOGI(TAG, "\tCommitting updates string in NVS ... ");
         err = nvs_commit(my_handle);
-        if (err == ESP_OK)
-        {
-            ESP_LOGD (TAG, "OK");
-        }
-        else if (err == ESP_ERR_NVS_INVALID_HANDLE)
-        {
-            ESP_LOGE (TAG,"INVALID HEADER");
-        }
+        ESP_LOGI(TAG, "%s", (err != ESP_OK) ? "Failed!" : "Done");
+        ret |= err; 
+
         nvs_close(my_handle);
     }
+    return ret;
 }
 
 //read data blob from flash
 esp_err_t read_data_from_flash (void *data_read, uint16_t byte_read, const char* key)
 {
-    err = nvs_open("storage", NVS_READWRITE, &my_handle);
+    nvs_handle_t my_handle;
+    esp_err_t ret = ESP_OK;
+    esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
     if (err != ESP_OK) {
         ESP_LOGI(TAG, "Error (%s) opening NVS handle!\n", esp_err_to_name(err));
-    } else {
-        esp_err_t err = nvs_get_blob(my_handle, key, data_read, byte_read);
+        ret |= err;
+    } else 
+    {
+        esp_err_t err = nvs_get_blob(my_handle, key, data_read, (size_t*)&byte_read);
         switch (err)
         {
         case ESP_OK:
@@ -791,16 +822,18 @@ esp_err_t read_data_from_flash (void *data_read, uint16_t byte_read, const char*
 
         case ESP_ERR_NVS_NOT_FOUND:
             ESP_LOGW(TAG, "Key %s not found", key);
+            ret |= err;
             break;
 
         default:
             ESP_LOGE(TAG, "Error (%s) reading key %s!", esp_err_to_name(err), key);
+            ret |= err;
             break;
         }
         nvs_close(my_handle);
     }
-    m_err_code = err;
-    return err;
+    //m_err_code = err;
+    return ret;
 }
 
 //Callback for user tasks created in app_main()
@@ -830,21 +863,22 @@ void change_protocol_using_to (protocol_type protocol)
     }
 }
 
-void handle_uart_data_task(void)
-{
-    uint8_t* data = (uint8_t*)malloc (10);
-    if (lwrb_read (&data_uart_module_rb, data, 10))
-    {
-        min_rx_feed(&m_min_context, data, 10);
-    }
-    free(data);
-}
+// void handle_uart_data_task(void)
+// {
+//     uint8_t* data = (uint8_t*)malloc (10);
+//     if (lwrb_read (&data_uart_module_rb, data, 10))
+//     {
+//         min_rx_feed(&m_min_context, data, 10);
+//     }
+//     free(data);
+// }
 
 uint32_t sys_get_ms(void)
 {
     return (xTaskGetTickCount() / portTICK_RATE_MS);
 }
 
+esp_err_t err;
 
 void min_rx_callback(void *min_context, min_msg_t *frame)
 {
@@ -883,67 +917,72 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
         // gsm status
         if (gsm_started)
         {
-            alarm_status.networkStatus |= (1 << 8);
+            alarm_status.networkStatus.value |= (1 << 8);
         }
         else
         {
-            alarm_status.networkStatus &= ~(1 << 8);
+            alarm_status.networkStatus.value &= ~(1 << 8);
         }
         //eth status
         if (eth_started)
         {
-            alarm_status.networkStatus |= (1 << 7);
+            alarm_status.networkStatus.value |= (1 << 7);
         }
         else
         {
-            alarm_status.networkStatus &= ~(1 << 7);
+            alarm_status.networkStatus.value &= ~(1 << 7);
         }
         // wifi status
         if (wifi_started)
         {
-            alarm_status.networkStatus |= (1 << 6);
+            alarm_status.networkStatus.value |= (1 << 6);
         }
         else
         {
-            alarm_status.networkStatus &= ~(1 << 6);
+            alarm_status.networkStatus.value &= ~(1 << 6);
         }
-        make_fire_status_payload (alarm_status, mqtt_payload); // Bo truong temper va fireZone
+        make_fire_status_payload (alarm_status, (char *)mqtt_payload); // Bo truong temper va fireZone
         // sau khi co tao xong payload  thi kiem tra tinh trang ket noi mang va luu vao flash neu mat mang hoac ban len server sau khi co mang lai
-        if ((alarm_status.networkStatus >> 5) == 0) // khong co mang
+        if ((alarm_status.networkStatus.value >> 5) == 0) // khong co mang
         {
-            write_data_to_flash (mqtt_payload, strlen (mqtt_payload), NVS_DATA_SENSOR);
+            err = write_data_to_flash (mqtt_payload, strlen ((char *)mqtt_payload), NVS_DATA_SENSOR);
+            ESP_LOGI (TAG, "Write heartbeat data  to flash: %s", (err = ESP_OK) ? "Fail" : "OK");
         }
-        esp_mqtt_client_publish(mqtt_client, heart_beat_topic_header, mqtt_payload, 0, 0, 0);
+        esp_mqtt_client_publish(mqtt_client, heart_beat_topic_header, (char*)mqtt_payload, 0, 0, 0);
         break;
     case MIN_ID_SEND_AND_RECEIVE_BEACON_MSG:
         memcpy (payload_buffer, frame->payload, 256);
         beacon_data_handle = (app_beacon_data_t *) payload_buffer;
         memcpy(sensor_info.mac, beacon_data_handle->device_mac, 6);
         sprintf (sensor_info.firmware, "%d", beacon_data_handle->fw_verison);
-        if (beacon_data_handle.propreties.Name.alarmState)
+        if (beacon_data_handle->propreties.Name.alarmState)
         {
             sensor_info.status = 1;
         }
         else
         {
-            sensor_info->status = 0;
+            sensor_info.status = 0;
         }
         sensor_info.temperature = beacon_data_handle->teperature_value;
         sensor_info.smoke = beacon_data_handle->smoke_value;
         sensor_info.updateTime = app_time ();
 
-        make_sensor_info_payload (sensor_info, mqtt_payload); 
+        make_sensor_info_payload (sensor_info, (char *)mqtt_payload); 
         if (!(gsm_started && wifi_started && eth_started))
         {
-            write_data_to_flash (mqtt_payload, strlen (mqtt_payload), NVS_DATA_SENSOR);
+            err = write_data_to_flash (mqtt_payload, strlen ((char *)mqtt_payload), NVS_DATA_SENSOR);
+            ESP_LOGI (TAG, "Write sensor data  to flash: %s", (err = ESP_OK) ? "Fail" : "OK");
         }
-        esp_mqtt_client_publish(mqtt_client, sensor_topic_header, mqtt_payload, 0, 0, 0);
+        esp_mqtt_client_publish(mqtt_client, sensor_topic_header, (char*)mqtt_payload, 0, 0, 0);
         break;
     case MIN_ID_PING_ESP_ALIVE:
         ESP_LOGI (TAG, "test ping gd32 ok, uart pass");
         break;
     case MIN_ID_PING_RESPONSE:
         ESP_LOGI (TAG, "ping gd 32ok, uart pass");
+        break;
+    case MIN_ID_NEW_SENSOR_PAIRING:
+        // luu vao flash de kiem soat
         break;
     default:
         break;
@@ -969,67 +1008,111 @@ void build_min_tx_data_for_spi(min_msg_t* min_msg, uint8_t* data_spi, uint8_t si
     min_msg->len = size;
 }
 
-void deinit_interface (protocol_type protocol)
-{
-    switch (protocol)
-    {
-    case WIFI_PROTOCOL:
-            esp_mqtt_client_destroy(mqtt_client);
-            ESP_LOGI(TAG, "destroy mqtt");
-            esp_wifi_stop();
-            wifi_started = false;
-        break;
-    case ETHERNET_PROTOCOL:
-            esp_mqtt_client_destroy(mqtt_client);
-            ESP_ERROR_CHECK(esp_eth_stop(eth_handle));
-            eth_started = false; 
-            ESP_LOGI(TAG, "destroy mqtt");
-        break;
-    case GSM_4G_PROTOCOL:
-            esp_mqtt_client_destroy(mqtt_client);
-            ESP_LOGI(TAG, "destroy mqtt");
-            /* Exit PPP mode */
-            ESP_ERROR_CHECK(esp_modem_stop_ppp(dte));
-            gsm_started = false;
-            ESP_LOGI(TAG, "ppp stop");
-            xEventGroupWaitBits(event_group, STOP_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
-#if CONFIG_EXAMPLE_SEND_MSG
-            const char *message = "Welcome to ESP32!";
-            ESP_ERROR_CHECK(example_send_message_text(dce, CONFIG_EXAMPLE_SEND_MSG_PEER_PHONE_NUMBER, message));
-            ESP_LOGI(TAG, "Send send message [%s] ok", message);
-#endif
-            /* Power down module */
-            if (dce != NULL)
-            {
-                ESP_ERROR_CHECK(dce->power_down(dce));
-                ESP_LOGI(TAG, "Power down");
-                ESP_ERROR_CHECK(dce->deinit(dce)); //deinit
-            }
-            if (esp_modem_netif_clear_default_handlers(modem_netif_adapter) == ESP_OK)
-            {
-                ESP_LOGI ("UNREGISTER", "CLEAR TO REINIT");
-            }
-            esp_modem_netif_teardown(modem_netif_adapter);
-            esp_netif_destroy(esp_netif);
-            ESP_LOGI ("UNREGISTER", "CLEAR TO REINIT");
-        break;
-    default:
-        ESP_LOGE (TAG, "UNHANDLABLE PROTOCOL DEINIT");
-        break;
-    }
-}
+// void deinit_interface (protocol_type protocol)
+// {
+//     switch (protocol)
+//     {
+//     case WIFI_PROTOCOL:
+//             esp_mqtt_client_destroy(mqtt_client);
+//             ESP_LOGI(TAG, "destroy mqtt");
+//             esp_wifi_stop();
+//             wifi_started = false;
+//         break;
+//     case ETHERNET_PROTOCOL:
+//             esp_mqtt_client_destroy(mqtt_client);
+//             ESP_ERROR_CHECK(esp_eth_stop(eth_handle));
+//             eth_started = false; 
+//             ESP_LOGI(TAG, "destroy mqtt");
+//         break;
+//     case GSM_4G_PROTOCOL:
+//             esp_mqtt_client_destroy(mqtt_client);
+//             ESP_LOGI(TAG, "destroy mqtt");
+//             /* Exit PPP mode */
+//             ESP_ERROR_CHECK(esp_modem_stop_ppp(dte));
+//             gsm_started = false;
+//             ESP_LOGI(TAG, "ppp stop");
+//             xEventGroupWaitBits(event_group, STOP_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
+// #if CONFIG_EXAMPLE_SEND_MSG
+//             const char *message = "Welcome to ESP32!";
+//             ESP_ERROR_CHECK(example_send_message_text(dce, CONFIG_EXAMPLE_SEND_MSG_PEER_PHONE_NUMBER, message));
+//             ESP_LOGI(TAG, "Send send message [%s] ok", message);
+// #endif
+//             /* Power down module */
+//             if (dce != NULL)
+//             {
+//                 ESP_ERROR_CHECK(dce->power_down(dce));
+//                 ESP_LOGI(TAG, "Power down");
+//                 ESP_ERROR_CHECK(dce->deinit(dce)); //deinit
+//             }
+//             if (esp_modem_netif_clear_default_handlers(modem_netif_adapter) == ESP_OK)
+//             {
+//                 ESP_LOGI ("UNREGISTER", "CLEAR TO REINIT");
+//             }
+//             esp_modem_netif_teardown(modem_netif_adapter);
+//             esp_netif_destroy(esp_netif);
+//             ESP_LOGI ("UNREGISTER", "CLEAR TO REINIT");
+//         break;
+//     default:
+//         ESP_LOGE (TAG, "UNHANDLABLE PROTOCOL DEINIT");
+//         break;
+//     }
+// }
 
 // app cli function
 void cli_cdc_tx(uint8_t *buffer, uint32_t size)
 {
-	uart_write_bytes(UART_NUM_1 ,buffer, size);
+	uart_write_bytes(UART_NUM_0 ,buffer, size);
 }
 
 int cli_cdc_puts(const char *msg)
 {
 	uint32_t len = strlen(msg);
-    uart_write_bytes(UART_NUM_1 ,msg, len);
+    uart_write_bytes(UART_NUM_0 ,msg, len);
 	return len;
+}
+
+// void handle_mutinetif()
+// {
+//     esp_netif_t *netifs[3]; // there are 3 netif to handle
+//     netifs[0] = gsm_esp_netif;
+//     netifs[1] = wifi_netif;
+//     netifs[2] = eth_netif;
+
+//     for (int i; i < 3; i++)
+//     {
+//         esp_netif_action_start(netifs[i], 0, 0, 0);
+//         esp_netif_action_connected(netifs[i], 0, 0, 0);
+//     }
+//     assert(esp_netif_get_netif_impl(netifs[0]), netif_default);
+
+// }
+
+typedef enum 
+{
+    GSM_NETIF,
+    ETH_NETIF,
+    WIFI_NETIF, 
+    NO_NETIF
+} network_netif;
+
+static network_netif check_and_update_default_netif (void)
+{
+    // struct netif *netifs[3]; // there are 3 netif to handle
+    // netifs[GSM_NETIF] = gsm_esp_netif;
+    // netifs[ETH_NETIF] = eth_netif;
+    // netifs[WIFI_NETIF] = wifi_netif;
+    // if (netif_is_up(netifs[GSM_NETIF])) {
+    //     netif_set_default(netifs[GSM_NETIF]);
+    //     return GSM_NETIF;
+    // } else if (netif_is_up(netifs[TCPIP_ADAPTER_IF_ETH])) {
+    //     netif_set_default(netifs[ETH_NETIF]);
+    //     return ETH_NETIF;
+    // } else if (netif_is_up(netifs[WIFI_NETIF])) {
+    //     netif_set_default(netifs[WIFI_NETIF]);
+    //     return WIFI_NETIF;
+    // }
+
+    return WIFI_NETIF;
 }
 
 void app_main(void)
@@ -1108,10 +1191,10 @@ void app_main(void)
     }
     
     //wdt init
-    ESP_ERROR_CHECK(esp_task_wdt_init(TWDT_TIMEOUT_S, false));
+    //ESP_ERROR_CHECK(esp_task_wdt_init(TWDT_TIMEOUT_S, false));
     //subcribe this task and checks it
-    ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
-    ESP_ERROR_CHECK(esp_task_wdt_status(NULL));
+    //ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
+    //ESP_ERROR_CHECK(esp_task_wdt_status(NULL));
     init_nvs_flash ();
     // while (1)
     // {
@@ -1178,13 +1261,12 @@ void app_main(void)
     
     //esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
 
-    esp_netif_t *eth_netif = esp_netif_new(&cfg);
+    eth_netif = esp_netif_new(&cfg);
 
     // Init MAC and PHY configs to default
     eth_mac_config_t mac_config = ETH_MAC_DEFAULT_CONFIG();
     eth_phy_config_t phy_config = ETH_PHY_DEFAULT_CONFIG();
     // reinit gpio
-    // phy_config.phy_addr = 0;
     phy_config.reset_gpio_num = CONFIG_ETH_PHY_RST_GPIO;
     mac_config.smi_mdc_gpio_num = CONFIG_ETH_MDC_GPIO;
     mac_config.smi_mdio_gpio_num = CONFIG_ETH_MDIO_GPIO;
@@ -1241,8 +1323,7 @@ void app_main(void)
         ESP_LOGI (TAG, "ETH CONNECT");
         eth_started = true;
     }
-    // esp_wifi_stop();
-    // ESP_LOGI (TAG, "WIFI DISCONNECT");
+
     do_ping_cmd();//pinging to addr
     ESP_ERROR_CHECK(esp_task_wdt_reset());
     //init testing applications
@@ -1312,87 +1393,106 @@ void app_main(void)
         ESP_ERROR_CHECK(esp_task_wdt_reset());
         ESP_LOGI(TAG, "PROTOCOL USE: %d ", protocol_using);
 
-        if (protocol_using != WIFI_PROTOCOL)
+        // if (protocol_using != WIFI_PROTOCOL)
+        // {
+        //     app_wifi_connect (wifi_name, wifi_pass);
+        //     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
+        //                                    WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+        //                                    pdFALSE,
+        //                                    pdFALSE,
+        //                                    5000);
+        //     if (bits & WIFI_CONNECTED_BIT)
+        //     {
+        //         ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
+        //                 CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
+        //         wifi_started = true;
+        //         protocol_using = WIFI_PROTOCOL;
+        //     }
+        //     else if (bits & WIFI_FAIL_BIT)
+        //     {
+        //         ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
+        //                 CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
+        //         protocol_using = ETHERNET_PROTOCOL;
+        //     }
+        //     else
+        //     {
+        //         ESP_LOGE(TAG, "UNEXPECTED EVENT");
+        //     }
+        // }
+        // else if ((protocol_using != ETHERNET_PROTOCOL) && (protocol_using != WIFI_PROTOCOL))
+        // {
+        //     protocol_using = ETHERNET_PROTOCOL;
+        // }
+        network_netif nn = check_and_update_default_netif ();
+        if (nn == GSM_NETIF)
         {
-            app_wifi_connect (wifi_name, wifi_pass);
-            EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
-                                           WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-                                           pdFALSE,
-                                           pdFALSE,
-                                           5000);
-            if (bits & WIFI_CONNECTED_BIT)
-            {
-                ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
-                        CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
-                wifi_started = true;
-                protocol_using = WIFI_PROTOCOL;
-            }
-            else if (bits & WIFI_FAIL_BIT)
-            {
-                ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
-                        CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
-                protocol_using = ETHERNET_PROTOCOL;
-            }
-            else
-            {
-                ESP_LOGE(TAG, "UNEXPECTED EVENT");
-            }
+            protocol_using = GSM_4G_PROTOCOL;
         }
-        else if ((protocol_using != ETHERNET_PROTOCOL) && (protocol_using != WIFI_PROTOCOL))
+        else if (nn == ETH_NETIF)
         {
             protocol_using = ETHERNET_PROTOCOL;
         }
-
+        else if (nn == WIFI_NETIF)
+        {
+            protocol_using = WIFI_PROTOCOL;
+        }
+        else
+        {
+            protocol_using = PROTOCOL_NONE;
+        }
         switch (protocol_using)
         {
         case WIFI_PROTOCOL:
-            if (wifi_started == false)
-            {
-                ESP_LOGI (TAG, "BEGIN WIFI");
-                app_wifi_connect (wifi_name, wifi_pass);
-                ESP_LOGI (TAG, "WIFI CONNECT");
-                do_ping_cmd(); //pinging to addr 
-                EventBits_t uxBitsPing = xEventGroupWaitBits(s_wifi_event_group, WIFI_PING_TIMEOUT | WIFI_PING_SUCESS, pdTRUE, pdFALSE, portMAX_DELAY);
-                if (uxBitsPing & WIFI_PING_TIMEOUT)
-                {
-                    ESP_LOGI (TAG, "PING TIMEOUT, RETRY WITH ETH");
-                    change_protocol_using_to (ETHERNET_PROTOCOL);
-                    continue;
-                }
-                else if (uxBitsPing & WIFI_PING_SUCESS)
-                {
-                    ESP_LOGI (TAG, "PING OK");
+            // if (wifi_started == false)
+            // {
+            //     ESP_LOGI (TAG, "BEGIN WIFI");
+            //     app_wifi_connect (wifi_name, wifi_pass);
+            //     ESP_LOGI (TAG, "WIFI CONNECT");
+            //     do_ping_cmd(); //pinging to addr 
+            //     EventBits_t uxBitsPing = xEventGroupWaitBits(s_wifi_event_group, WIFI_PING_TIMEOUT | WIFI_PING_SUCESS, pdTRUE, pdFALSE, portMAX_DELAY);
+            //     if (uxBitsPing & WIFI_PING_TIMEOUT)
+            //     {
+            //         ESP_LOGI (TAG, "PING TIMEOUT, RETRY WITH ETH");
+            //         change_protocol_using_to (ETHERNET_PROTOCOL);
+            //         continue;
+            //     }
+            //     else if (uxBitsPing & WIFI_PING_SUCESS)
+            //     {
+            //         ESP_LOGI (TAG, "PING OK");
                     wifi_started = true;
-                }
-                else
-                {
-                    ESP_LOGI (TAG, "PING UNEXPECTED EVENT");
-                }
-            }
+            //     }
+            //     else
+            //     {
+            //         ESP_LOGI (TAG, "PING UNEXPECTED EVENT");
+            //     }
+            // }
             break;
         case ETHERNET_PROTOCOL:
-            if (eth_started == false)
-            {
-                ESP_ERROR_CHECK(esp_eth_start(eth_handle));
-                eth_started = true;
-            }
+            // if (eth_started == false)
+            // {
+            //     ESP_ERROR_CHECK(esp_eth_start(eth_handle));
+            eth_started = true;
+            // }
         break;
         case GSM_4G_PROTOCOL:
+            gsm_started = true;
+            // dce = NULL;
+            // dce = ec2x_init (dte);
 
-            dce = NULL;
-            dce = ec2x_init (dte);
-
-            if(dce == NULL)
-            {
-                ESP_LOGE(TAG, "INT 4G FAIL");
-                //protocol_using = WIFI_PROTOCOL;
-                change_protocol_using_to (WIFI_PROTOCOL);
-                continue;
-            }
-            xEventGroupWaitBits(event_group, CONNECT_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
+            // if(dce == NULL)
+            // {
+            //     ESP_LOGE(TAG, "INT 4G FAIL");
+            //     //protocol_using = WIFI_PROTOCOL;
+            //     change_protocol_using_to (WIFI_PROTOCOL);
+            //     continue;
+            // }
+            // xEventGroupWaitBits(event_group, CONNECT_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
         break;
         default:
-            ESP_LOGE(TAG, "this would like to never reach");
+            eth_started = false;
+            gsm_started = false;
+            wifi_started = false;
+            ESP_LOGE(TAG, "No internet connected");
             break;
         }
         // wait connected then we listen to mqtt sever
@@ -1431,6 +1531,10 @@ void app_main(void)
             mqtt_config.password = mqtt_password;
             mqtt_config.event_handle = mqtt_event_handler;
             mqtt_server_ready = true;
+        
+            mqtt_client = esp_mqtt_client_init(&mqtt_config);
+            ESP_LOGI (TAG, "MQTT INIT");
+            esp_mqtt_client_start(mqtt_client);
         }
         
         // we modulized connect event
@@ -1438,9 +1542,9 @@ void app_main(void)
         ESP_LOGI (TAG, "MQTT INIT");
         esp_mqtt_client_start(mqtt_client);
         //register topic
-        //if (co imei thi ms dang ky dc)
+        //if (memcmp (GSM_IMEI, "not init yet") != 0)
         {
-            //this is example for heartbeat topic
+            
             make_mqtt_topic_header (HEART_BEAT_HEADER, "smart_module", GSM_IMEI, heart_beat_topic_header);
             int msg_id = esp_mqtt_client_subscribe(mqtt_client, heart_beat_topic_header, 0);
             ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
@@ -1535,7 +1639,7 @@ void app_main(void)
                 syn_time_and_status_msg.payload = &esp_status_infor;
                 syn_time_and_status_msg.len = sizeof (uint32_t);
                 send_min_data (&syn_time_and_status_msg);
-            }            
+            }
 
             //xEventGroupWaitBits(event_group, GOT_DATA_BIT, pdTRUE, pdTRUE, 1000 / portTICK_RATE_MS);
             ubits = xEventGroupWaitBits (event_group, UPDATE_BIT, pdTRUE, pdTRUE, 5/ portTICK_RATE_MS); 
@@ -1567,18 +1671,11 @@ void app_main(void)
                 lấy đc IMEI thiết bị check sim các kiểu
                 xử lí trường hợp server chết
             */
-            //can lay du lieu tu spi (doc tu gd32 qua uart) roi xu li
-
-            if (1)//khi can gui du lieu qua spi
-            {
-                min_msg_t min_msg_data_buff;
-                build_min_tx_data_for_spi(&min_msg_data_buff, (uint8_t*)"hello", 5);//test 
-                send_min_data (&min_msg_data_buff);
-            }
-            // handle_uart_data_task();
         }
         //deinit after get out of loop to reinit in new loop
-        deinit_interface (protocol_using);
+
+
+        //deinit_interface (protocol_using);
     }
 //    ESP_ERROR_CHECK(dte->deinit(dte));
 }

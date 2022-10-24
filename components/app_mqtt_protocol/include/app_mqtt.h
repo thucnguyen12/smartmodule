@@ -50,7 +50,7 @@ typedef struct
     char simIMEI[20];
     char firmware[20];
     char loginReson[10];
-    int hardwareVersion[20];
+    char hardwareVersion[20];
     int updateTime;
     char ExpFwVersion[10];
     char ExpHwVersion[10];
@@ -224,6 +224,13 @@ typedef struct __attribute((packed))
   node_custom_data_t custom_data;
 } app_beacon_data_t;
 
+typedef struct
+{
+    uint8_t appkey[16]; // KEY_LENGHT_16
+    uint8_t netkey[16];
+    uint32_t iv_index;
+    uint32_t sequence_number;
+} ble_info_t;
 
 
 void make_mqtt_topic_header(header_type_t header_type ,char *topic_hr, char *IMEI, char* str_out);

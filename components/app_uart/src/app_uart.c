@@ -59,10 +59,10 @@ void uart_event_task(void *pvParameters)
                     uart_read_bytes(UART_NUM_1, dtmp, event.size, portMAX_DELAY);
                     min_rx_feed(&m_min_context, (uint8_t *)dtmp, event.size);
 #if USE_APP_CLI
-                    for (size_t i = 0; i < event.size; i++)
-                    {
-                        app_cli_poll(dtmp[i]);
-                    }
+                    // for (size_t i = 0; i < event.size; i++)
+                    // {
+                    //     // app_cli_poll(dtmp[i]);
+                    // }
 #endif
                     //uart_write_bytes(UART_NUM_1, (const char*) dtmp, event.size); //no need echo
 

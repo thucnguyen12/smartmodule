@@ -126,22 +126,15 @@ void make_config_info_payload (info_config_t config, char * str_out)
     index = sprintf (str_out + index, "\"zoneDelay\":%d\r\n}", config.zoneDelay);
 }
 
-/*
-    typedef struct
-{
-   //bool available; check if inf is saved in flash
-   uint8_t app_key[KEY_LENGHT]; // KEY_LENGHT_16
-   uint8_t net_key[KEY_LENGHT];
-   dsm_local_unicast_address_t unicast_address;
-   //uint32_t sum32;
-}mesh_network_info_t;
 
-typedef struct
-{
-    uint8_t app_key[16]; // KEY_LENGHT_16
-    uint8_t net_key[16];
-    uint32_t iv_index;
-    uint32_t sequence_number;
-} ble_info_t;
+// typedef struct
+// {
+//    //bool available; check if inf is saved in flash
+//    uint8_t app_key[KEY_LENGHT]; // KEY_LENGHT_16
+//    uint8_t net_key[KEY_LENGHT];
+//    dsm_local_unicast_address_t unicast_address;
+//    //uint32_t sum32;
+// }mesh_network_info_t;
 
-*/
+
+

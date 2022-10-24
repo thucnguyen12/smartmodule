@@ -34,7 +34,7 @@
 #include <stdlib.h>
 #include "app_cli.h"
 #include "app_shell.h"
-#include "FreeRTOS.h"
+#include "freertos/FreeRTOS.h"
 #include "task.h"
 // #include "app_spi_flash.h"
 // #include "app_drv_spi.h"

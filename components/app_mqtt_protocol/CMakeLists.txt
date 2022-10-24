@@ -1,4 +1,5 @@
 set(srcs "src/app_mqtt.c")
 
 idf_component_register(SRCS "${srcs}"
-                    INCLUDE_DIRS include app_cli)
+                    INCLUDE_DIRS include
+                    REQUIRES app_cli)

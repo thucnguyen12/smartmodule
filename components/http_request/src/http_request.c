@@ -39,7 +39,7 @@ static const char *REQUEST = "GET " WEB_PATH " HTTP/1.0\r\n"
 
 
 
-static cJSON *parse_json(char *content)
+cJSON *parse_json(char *content)
 {
     cJSON *parsed = NULL;
     parsed = cJSON_Parse(content);
