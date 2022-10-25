@@ -2,7 +2,7 @@
 #include "app_shell.h"
 #include "string.h"
 #include "stdio.h"
-#include "app_debug.h"
+// #include "app_debug.h"
 
 #define APP_SHELL_ASSERT(x)             while (0)
 #define KEY_ESC (0x1BU)

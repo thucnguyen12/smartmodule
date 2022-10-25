@@ -114,11 +114,11 @@ uint32_t app_time(void)
     localtime_r(&now, &timeinfo);
     // Need convert timeinfo to date_time_t then send it to gd32;
     time_now_struct.year = timeinfo.tm_year;
-    time_now_struct.month = timeinfo.tm_month;
-    time_now_struct.day = timeinfo.tm_day;
+    time_now_struct.month = timeinfo.tm_mon;
+    time_now_struct.day = timeinfo.tm_mday;
     time_now_struct.hour = timeinfo.tm_hour;
-    time_now_struct.minute = timeinfo.tm_minute;
-    time_now_struct.second = timeinfo.tm_second;
+    time_now_struct.minute = timeinfo.tm_min;
+    time_now_struct.second = timeinfo.tm_sec;
     uint32_t timstamp = convert_date_time_to_second(&time_now_struct);
 
     char strftime_buf[64];

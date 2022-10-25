@@ -77,10 +77,10 @@ esp_netif_t* esp_netif_create_wifi_sta(void)
         .stack = ESP_NETIF_NETSTACK_DEFAULT_WIFI_STA, // use default WIFI-like network stack configuration
     };
     wifi_netif = esp_netif_new(&cfg);
-    assert(netif);
+    assert(wifi_netif);
     esp_netif_attach_wifi_station(wifi_netif);
     esp_wifi_set_default_wifi_sta_handlers();
-    return netif;
+    return wifi_netif;
 }
 
 

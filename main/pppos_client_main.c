@@ -215,21 +215,6 @@ bool wifi_started = false;
 bool eth_started = false;
 bool gsm_started = false;
 
-//eth netif config
-esp_netif_ip_info_t ip_info;
-esp_netif_inherent_config_t netif_eth_config = {
-    .flags = ESP_NETIF_FLAG_AUTOUP,
-    .ip_info = (esp_netif_ip_info_t*)&ip_info,
-    .if_key = "eth",
-    .if_desc = "net_eth_if",
-    .route_prio = 3
-    
-};
-esp_netif_config_t cfg = {
-    .base = &netif_eth_config,                 // use specific behaviour configuration
-    .stack = ESP_NETIF_NETSTACK_DEFAULT_ETH // use default WIFI-like network stack configuration
-};
-
 void send_min_data(min_msg_t *min_msg);
 esp_err_t read_data_from_flash (void *data_read, uint16_t byte_read, const char* key);
 int32_t write_data_to_flash(void *data_write, size_t byte_write, const char* key);
@@ -738,21 +723,19 @@ void gsm_gpio_config (void)
 
 void send_current_config (info_config_t config_infor_now)
 {
-    //config_infor_now.httpDnsName = HTTP_SERVER;
     sprintf (config_infor_now.httpDnsName, HTTP_SERVER);
-    //thay bang memset
-    // config_infor_now.httpUsername = NULL;
-    // config_infor_now.httpDnsPass = NULL;
-
-    // config_infor_now.httpDnsPort = WEB_PORT;
+    memset (config_infor_now.httpUsername, '\0', sizeof (config_infor_now.httpUsername));
+    memset (config_infor_now.httpDnsPass, '\0', sizeof (config_infor_now.httpDnsPass));
+    // sprintf (config_infor_now.httpDnsPort, WEB_PORT);
+    config_infor_now.httpDnsPort = gsm_utilities_get_number_from_string (0, WEB_PORT);
     // dung sprintf
-    // config_infor_now.wifiname = CONFIG_ESP_WIFI_SSID;
-    // config_infor_now.wifipass = CONFIG_ESP_WIFI_PASSWORD;
+    sprintf (config_infor_now.wifiname, CONFIG_ESP_WIFI_SSID);
+    sprintf (config_infor_now.wifipass, CONFIG_ESP_WIFI_PASSWORD);
     config_infor_now.wifiDisable = IS_WIFI_DISABLE;
     // config_infor_now.reset = RESET; //bo truong reset
     // dung sprintf
-    // config_infor_now.pingMainServer = EXAMPLE_PING_IP;
-    // config_infor_now.pingBackupServer = BACKUP_PING_IP;
+    sprintf (config_infor_now.pingMainServer, EXAMPLE_PING_IP);
+    sprintf (config_infor_now.pingBackupServer, BACKUP_PING_IP);
     config_infor_now.inputActiveLevel = 1;
     // Smart module khong dung 3 truong nay
     config_infor_now.zoneMinMv = 0; //CONFIG_ZONE_MIN_MV;
@@ -1259,7 +1242,21 @@ void app_main(void)
 
     // ETHERNET INIT Emac
     
-    //esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
+    //eth netif config
+    esp_netif_ip_info_t ip_info;
+    esp_netif_inherent_config_t netif_eth_config = {
+        .flags = ESP_NETIF_FLAG_AUTOUP,
+        .ip_info = (esp_netif_ip_info_t*)&ip_info,
+        .if_key = "eth",
+        .if_desc = "net_eth_if",
+        .route_prio = 3
+        
+    };
+    esp_netif_config_t cfg = {
+        .base = &netif_eth_config,                 // use specific behaviour configuration
+        .driver = NULL,
+        .stack = ESP_NETIF_NETSTACK_DEFAULT_ETH, // use default WIFI-like network stack configuration
+    };
 
     eth_netif = esp_netif_new(&cfg);
 

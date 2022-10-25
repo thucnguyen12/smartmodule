@@ -32,7 +32,7 @@ static const char *TAG = "app_uart";
 QueueHandle_t uart1_queue;
 QueueHandle_t uart0_queue;
 extern lwrb_t data_uart_module_rb;
-static lwrb_t* data_uart_module_rb_ptr = &data_uart_module_rb;
+//static lwrb_t* data_uart_module_rb_ptr = &data_uart_module_rb;
 
 extern min_context_t m_min_context;
 
@@ -194,7 +194,7 @@ void uart_event_task(void *pvParameters)
         // }
     }
     free(dtmp);
-    free(dtmp_uart0);
+    //free(dtmp_uart0);
     dtmp = NULL;
     vTaskDelete(NULL);
 }

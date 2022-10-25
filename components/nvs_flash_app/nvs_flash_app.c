@@ -1,5 +1,9 @@
 #include "nvs_flash_app.h"
+#include "esp_log.h"
+#include "esp_err.h"
 
+
+static const char* TAG = "nvs_flash_app";
 
 //******************************************* NVS PLACE *****************************///
 void init_nvs_flash(void )
@@ -28,7 +32,7 @@ int32_t write_data_to_flash(void *data_write, size_t byte_write, const char* key
         // ghi lại gia tri mac dinh và them version control
     } else {
         ESP_LOGI(TAG, "OPEN Done, Writing data to key %s\n", key);
-        err = nvs_set_blob (my_handle, key, data_write, byte_write);
+        err = nvs_set_blob (my_handle, key, data_write, &byte_write);
         ESP_LOGI(TAG, "%s", (err != ESP_OK) ? "Failed!" : "Done");
         ret |= err;
 
@@ -45,11 +49,14 @@ int32_t write_data_to_flash(void *data_write, size_t byte_write, const char* key
 //read data blob from flash
 esp_err_t read_data_from_flash (void *data_read, uint16_t byte_read, const char* key)
 {
-    err = nvs_open("storage", NVS_READWRITE, &my_handle);
+    nvs_handle_t my_handle;
+    esp_err_t ret = ESP_OK;
+    esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
     if (err != ESP_OK) {
         ESP_LOGI(TAG, "Error (%s) opening NVS handle!\n", esp_err_to_name(err));
+        ret |= err;
     } else {
-        esp_err_t err = nvs_get_blob(my_handle, key, data_read, byte_read);
+        esp_err_t err = nvs_get_blob(my_handle, key, data_read, &byte_read);
         switch (err)
         {
         case ESP_OK:
@@ -57,14 +64,16 @@ esp_err_t read_data_from_flash (void *data_read, uint16_t byte_read, const char*
 
         case ESP_ERR_NVS_NOT_FOUND:
             ESP_LOGW(TAG, "Key %s not found", key);
+            ret |= err;
             break;
 
         default:
             ESP_LOGE(TAG, "Error (%s) reading key %s!", esp_err_to_name(err), key);
+            ret |= err;
             break;
         }
         nvs_close(my_handle);
     }
     //m_err_code = err;
-    return err;
+    return ret;
 }

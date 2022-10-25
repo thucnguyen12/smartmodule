@@ -35,10 +35,10 @@
 #include "app_cli.h"
 #include "app_shell.h"
 #include "freertos/FreeRTOS.h"
-#include "task.h"
+#include "freertos/task.h"
 // #include "app_spi_flash.h"
 // #include "app_drv_spi.h"
-#include "gsm_utilities.h"
+#include "gsm_ultilities.h"
 #include "app_mqtt.h"
 //#include "esp_log.h"
 //#include "esp_system.h"
@@ -49,9 +49,9 @@
 //#include "app_aes.h"
 //#include "base64.h"
 //#include "app_audio.h"
-#include "main.h"
-#include "app_debug.h"
-#include "diskio.h"
+// #include "main.h"
+// #include "app_debug.h"
+// #include "diskio.h"
 #include "min.h"
 #include "min_id.h"
 //static const char *TAG = "cli";
@@ -65,8 +65,6 @@ static int32_t send_mesh_key (p_shell_context_t context, int32_t argc, char **ar
 
 static const shell_command_context_t cli_command_table[] =
 {
-		 {"reset", "\treset: Reset stm32\r\n", system_reset, 0},
-		 {"build", "\tbuild: Get firmware build timestamp\r\n", get_build_timestamp, 0},
          {"meshKey", "\tmeshKey: send a key to test\r\n", send_mesh_key, 4},
 };
 static shell_context_struct m_user_context;
@@ -100,10 +98,10 @@ void app_cli_start (app_cli_cb_t *callback)
 static int32_t send_mesh_key (p_shell_context_t context, int32_t argc, char **argv)
 {
     ble_config_t test_config;
-    memcpy (test_config.provision.appkey, argv[1]);
-    memcpy (test_config.provision.netkey, argv[2]);
-    test_config.iv_index = gsm_utilities_get_number_from_string(argv);
-    test_config.sequence_number = gsm_utilities_get_number_from_string(argv);
+    memcpy (test_config.provision.appkey, argv[1], 16);
+    memcpy (test_config.provision.netkey, argv[2], 16);
+    test_config.iv_index = gsm_utilities_get_number_from_string(0, *argv);
+    test_config.sequence_number = gsm_utilities_get_number_from_string(0, *argv);
     // TODO:  send min packet
     min_msg_t test_config_msg;
     test_config_msg.id = MIN_ID_SEND_KEY_CONFIG;

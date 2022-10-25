@@ -73,21 +73,24 @@ esp_err_t esp_modem_add_event_handler(modem_dte_t *dte, esp_event_handler_t hand
     return esp_modem_set_event_handler(dte, on_modem_compat_handler, ESP_EVENT_ANY_ID, handler_args);
 }
 
-esp_netif_ip_info_t ip_info;
-esp_netif_inherent_config_t netif_gsm_config = {
-    .flags = ESP_NETIF_FLAG_AUTOUP,
-    .ip_info = (esp_netif_ip_info_t*)&ip_info,
-    .if_key = "gsm",
-    .if_desc = "net_gsm_if",
-    .route_prio = 1
-};
-esp_netif_config_t cfg = {
-    .base = &netif_gsm_config,                 // use specific behaviour configuration
-    .stack = ESP_NETIF_NETSTACK_DEFAULT_PPP, // use default WIFI-like network stack configuration
-};
+
 
 esp_err_t esp_modem_setup_ppp(modem_dte_t *dte)
 {
+    esp_netif_ip_info_t ip_info;
+    esp_netif_inherent_config_t netif_gsm_config = {
+        .flags = ESP_NETIF_FLAG_AUTOUP,
+        .ip_info = (esp_netif_ip_info_t*)&ip_info,
+        .if_key = "gsm",
+        .if_desc = "net_gsm_if",
+        .route_prio = 1
+    };
+    esp_netif_config_t cfg = {
+        .base = &netif_gsm_config,// use specific behaviour configuration
+        .driver = NULL,                 
+        .stack = ESP_NETIF_NETSTACK_DEFAULT_PPP, // use default WIFI-like network stack configuration
+    };
+
 #if CONFIG_LWIP_PPP_PAP_SUPPORT && defined(CONFIG_EXAMPLE_MODEM_PPP_AUTH_USERNAME) && defined(CONFIG_EXAMPLE_MODEM_PPP_AUTH_PASSWORD)
     esp_netif_auth_type_t auth_type = NETIF_PPP_AUTHTYPE_PAP;
 #elif CONFIG_LWIP_PPP_CHAP_SUPPORT && defined(CONFIG_EXAMPLE_MODEM_PPP_AUTH_USERNAME) && defined(CONFIG_EXAMPLE_MODEM_PPP_AUTH_PASSWORD)
