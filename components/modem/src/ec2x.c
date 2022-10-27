@@ -30,6 +30,7 @@
 #include "gsm_hardware.h"
 #include "gsm_ultilities.h"
 #include "gsm_hardware.h"
+#include "esp_modem_netif.h"
 //#include "board.h"
 //#include "utilities.h"
 
@@ -39,6 +40,7 @@
 #define MODEM_MAX_NETWORK_BAND_STR_LEN  64
 
 static bool timeout_with_4g_ec2x = false;
+esp_netif_t *gsm_esp_netif = NULL;
 
 /**
  * @brief Macro defined for error checking
@@ -1316,7 +1318,33 @@ static void gsm_manager_task(void *arg)
 
 							/* Setup PPP environment */
 							ESP_LOGI(TAG, "Start ppp\r\n");
-							assert(ESP_OK == esp_modem_setup_ppp(ec2x_dce->parent.dte));
+							// assert(ESP_OK == esp_modem_setup_ppp(ec2x_dce->parent.dte));
+                            esp_netif_ip_info_t ip_info;
+                            esp_netif_inherent_config_t netif_gsm_config = {
+                                .flags = ESP_NETIF_FLAG_AUTOUP,
+                                .ip_info = (esp_netif_ip_info_t*)&ip_info,
+                                .if_key = "gsm",
+                                .if_desc = "net_gsm_if",
+                                .route_prio = 1
+                            };
+                            esp_netif_config_t cfg = {
+                                .base = &netif_gsm_config,// use specific behaviour configuration
+                                .driver = NULL,                 
+                                .stack = ESP_NETIF_NETSTACK_DEFAULT_PPP, // use default WIFI-like network stack configuration
+                            };
+                            gsm_esp_netif = esp_netif_new(&cfg);
+                            assert(gsm_esp_netif);
+                            void *modem_netif_adapter = esp_modem_netif_setup(ec2x_dce->parent.dte);
+                            ESP_LOGI(TAG, "netif init");
+                            if(esp_modem_netif_set_default_handlers(modem_netif_adapter, gsm_esp_netif) == ESP_OK)
+                            {
+                                ESP_LOGI(TAG, "register handler");
+                            }
+                            /* attach the modem to the network interface */
+                            if (esp_netif_attach(gsm_esp_netif, modem_netif_adapter) == ESP_OK)
+                            {
+                                ESP_LOGI (TAG, "NETIF ATTACK OK");
+                            }
 	                        assert(ESP_OK == esp_modem_start_ppp(ec2x_dce->parent.dte));
 						}
 						else
@@ -1337,8 +1365,8 @@ static void gsm_manager_task(void *arg)
                 else
                 {
                     ESP_LOGE(TAG, "ec2x_dce is NULL!");
-                    // SoftResetSystem(101);
-                    //						esp_restart();
+                    //SoftResetSystem(101);
+                    //esp_restart();
                     device_reboot(101);
                 }
                 break;

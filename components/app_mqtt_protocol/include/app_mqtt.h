@@ -142,11 +142,44 @@ typedef struct __attribute((packed))
     uint8_t appkey[16];
 } app_provision_key_t;
 
+
+typedef union 
+{
+    struct  
+    {
+        uint8_t config_netkey : 1;
+        uint8_t config_appkey : 1;
+        uint8_t config_IVindex : 1;
+        uint8_t config_seqnumber :1;
+        uint8_t config_speaker : 1;
+        uint8_t config_alarm : 1;
+        uint8_t config_mac   : 1;
+        uint8_t reseverd     : 1;
+    }__attribute__((packed)) name;;
+    uint8_t value;
+} __attribute__((packed))config_in_need;
+
+typedef union {
+    struct Alarms_t {
+        uint8_t EnableBuzzer : 1;
+        uint8_t EnableSyncAlarm : 1;
+        uint8_t EnableAlarmPower : 1;
+        uint8_t reserver : 5;
+    } Name;
+    uint8_t Value;
+} AlarmConfig_t;
+
 typedef struct
 {
-    app_provision_key_t provision;
+    config_in_need config;
+    //app_provision_key_t provision;
+    uint8_t netkey[16];
+    uint8_t appkey[16];
+    uint8_t speaker;
+    AlarmConfig_t alarm;
     uint32_t iv_index;
     uint32_t sequence_number;
+    uint8_t mac[6];
 }__attribute((packed)) ble_config_t;
 
 

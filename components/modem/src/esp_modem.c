@@ -148,12 +148,12 @@ static void esp_handle_uart_data(esp_modem_dte_t *esp_dte)
     
     uart_get_buffered_data_len(esp_dte->uart_port, &length);
     ESP_LOGV(MODEM_TAG, "uart_get_buffered_data_len()=%d", length);
-#warning "this only for debug after that we need remove following lines"
-    uart_read_bytes (esp_dte->uart_port, tmp_buffer, length, 200000);
-    for (uint8_t i = 0; i < length; i++)
-    {
-        app_cli_poll(tmp_buffer[i]);
-    }
+// #warning "this only for debug after that we need remove following lines"
+//     uart_read_bytes (esp_dte->uart_port, tmp_buffer, length, 200000);
+//     for (uint8_t i = 0; i < length; i++)
+//     {
+//         app_cli_poll(tmp_buffer[i]);
+//     }
     if (esp_dte->parent.dce->mode != MODEM_PPP_MODE && length) {
         // Read the data and process it using `handle_line` logic
         length = MIN(esp_dte->buffer_size - 1, length);

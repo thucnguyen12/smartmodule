@@ -40,21 +40,15 @@
 // #include "app_drv_spi.h"
 #include "gsm_ultilities.h"
 #include "app_mqtt.h"
-//#include "esp_log.h"
+#include "esp_log.h"
 //#include "esp_system.h"
 //#include "app_flash.h"
 //#include "app_ota.h"
 //#include "app_mqtt.h"
-//#include "DataDefine.h"
-//#include "app_aes.h"
-//#include "base64.h"
-//#include "app_audio.h"
-// #include "main.h"
-// #include "app_debug.h"
-// #include "diskio.h"
+#include "nvs_flash_app.h"
 #include "min.h"
 #include "min_id.h"
-//static const char *TAG = "cli";
+static const char *TAG = "cli";
 
 extern min_context_t m_min_context;
 extern void send_min_data(min_msg_t *min_msg);
@@ -62,10 +56,14 @@ extern void send_min_data(min_msg_t *min_msg);
 // static int32_t system_reset (p_shell_context_t context, int32_t argc, char **argv);
 // static int32_t get_build_timestamp (p_shell_context_t context, int32_t argc, char **argv);
 static int32_t send_mesh_key (p_shell_context_t context, int32_t argc, char **argv);
+static int32_t write_data_to_flash_test (p_shell_context_t context, int32_t argc, char **argv);
+static int32_t read_data_from_flash_test (p_shell_context_t context, int32_t argc, char **argv);
 
 static const shell_command_context_t cli_command_table[] =
 {
          {"meshKey", "\tmeshKey: send a key to test\r\n", send_mesh_key, 4},
+         {"test_flash", "\ttest_flash: write fake data to flash\r\n", write_data_to_flash_test, 0},
+         {"read_data", "\tread_data: Read data from test flash and display it\r\n", read_data_from_flash_test, 0}
 };
 static shell_context_struct m_user_context;
 static app_cli_cb_t *m_cb;
@@ -98,8 +96,9 @@ void app_cli_start (app_cli_cb_t *callback)
 static int32_t send_mesh_key (p_shell_context_t context, int32_t argc, char **argv)
 {
     ble_config_t test_config;
-    memcpy (test_config.provision.appkey, argv[1], 16);
-    memcpy (test_config.provision.netkey, argv[2], 16);
+    test_config.config.value = 0xF0;
+    memcpy (test_config.appkey, argv[1], 16);
+    memcpy (test_config.netkey, argv[2], 16);
     test_config.iv_index = gsm_utilities_get_number_from_string(0, *argv);
     test_config.sequence_number = gsm_utilities_get_number_from_string(0, *argv);
     // TODO:  send min packet
@@ -111,14 +110,53 @@ static int32_t send_mesh_key (p_shell_context_t context, int32_t argc, char **ar
     return 0;
 }
 
-// static int32_t system_reset(p_shell_context_t context, int32_t argc, char **argv)
-// {
-// 	NVIC_SystemReset ();
-// 	return 0;
-// }
+static int32_t write_data_to_flash_test (p_shell_context_t context, int32_t argc, char **argv)
+{
+    static const info_config_t test_config_data = {
+        .buzzerEnable = true,
+        .charg_interval = 20,
+        .httpDnsName = "test",
+        .httpDnsPass = "pass",
+        .httpDnsPort = 80,
+        .httpUsername = "ex_user",
+        .inputActiveLevel = 1,
+        .mqtt_add = "server_test",
+        .mqtt_user = "user",
+        .mqtt_pass = "server_pass",
+        .networkAddress = "test_addr",
+        .pingMainServer = "google.com",
+        .pingBackupServer = "google.com",
+        .smokeSensorHeartbeatInterval = 100,
+        .smokeSensorThresHole = 2,
+        .smokeSensorWakeupInterval = 120,
+        .syncAlarm = true,
+        .tempSensorHeartbeatInterval = 100,
+        .tempSensorWakeupInterval = 200,
+        .topic_hr = "test_hdr",
+        .tempThresHold = 10,
+        .uncharg_interval = 2000,
+        .userPhoneNumber1 = "0123456789\0",
+        .userPhoneNumber2 = "1234567889\0",
+        .userPhoneNumber3 = "0192811827\0",
+        .wifiDisable = 0,
+        .wifiname = "wifiname",
+        .wifipass = "pass1234",
+        .zoneDelay = 0,
+        .zoneMaxMv = 0,
+        .zoneMinMv = 0
+    };
+    esp_err_t err = write_data_to_flash (&test_config_data, sizeof (info_config_t), "test_flash");
+    ESP_LOGI (TAG, "WRITE DATA TO FLASH");
+    return 0;
+}
 
-// static int32_t get_build_timestamp (p_shell_context_t context, int32_t argc, char **argv)
-// {
-// 	DEBUG_INFO("Build %s %s\r\n", __DATE__, __TIME__);
-// 	return 0;
-// }
+static int32_t read_data_from_flash_test (p_shell_context_t context, int32_t argc, char **argv)
+{
+    static info_config_t test_config_data;
+    static char str_test [512];
+    uint16_t len = sizeof (info_config_t);
+    read_data_from_flash (&test_config_data, &len, "test_flash");
+    make_config_info_payload (test_config_data, str_test);
+    ESP_LOGI (TAG, "payload make: %s", str_test);
+    return 0;
+}

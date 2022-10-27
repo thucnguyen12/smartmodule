@@ -20,8 +20,8 @@
 #include "esp_log.h"
 
 static const char *TAG = "esp-modem-compat";
-esp_netif_t *gsm_esp_netif = NULL;
-
+extern esp_netif_t *gsm_esp_netif = NULL;
+extern bool gsm_started;
 
 static void on_modem_compat_handler(void *arg, esp_event_base_t event_base,
                         int32_t event_id, void *event_data)
@@ -52,12 +52,19 @@ static void on_ip_event(void *arg, esp_event_base_t event_base,
         ipinfo.ip.addr = event->ip_info.ip.addr;
         ipinfo.gw.addr = event->ip_info.gw.addr;
         ipinfo.netmask.addr = event->ip_info.netmask.addr;
+        ESP_LOGI(TAG, "Modem Connect to PPP Server");
+        ESP_LOGI(TAG, "~~~~~~~~~~~~~~");
+        ESP_LOGI(TAG, "IP          : " IPSTR, IP2STR(&event->ip_info.ip));
+        ESP_LOGI(TAG, "Netmask     : " IPSTR, IP2STR(&event->ip_info.netmask));
+        ESP_LOGI(TAG, "Gateway     : " IPSTR, IP2STR(&event->ip_info.gw));
         esp_netif_get_dns_info(netif, 0, &dns_info);
         ipinfo.ns1.addr = dns_info.ip.u_addr.ip4.addr;
         ipinfo.ns2.addr = dns_info.ip.u_addr.ip4.addr;
         esp_event_post(ESP_MODEM_EVENT, MODEM_EVENT_PPP_CONNECT, &ipinfo, sizeof(ipinfo), 0);
+        gsm_started = true;
     } else if (event_id == IP_EVENT_PPP_LOST_IP) {
         ESP_LOGI(TAG, "Modem Disconnect from PPP Server");
+        gsm_started = false;
         esp_event_post(ESP_MODEM_EVENT, MODEM_EVENT_PPP_DISCONNECT, NULL, 0, 0);
     }
 }

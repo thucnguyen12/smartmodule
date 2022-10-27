@@ -28,7 +28,7 @@ EventGroupHandle_t s_wifi_event_group;
 static int s_retry_num = 0;
 static bool init_sta = false;
 esp_netif_t *wifi_netif = NULL;
-
+extern bool wifi_started;
 
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
@@ -40,6 +40,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
     }
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
     {
+        wifi_started = false;
         if (s_retry_num < WIFI_MAXIMUM_RETRY)
         {
             esp_wifi_connect();
@@ -58,6 +59,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
         ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
         s_retry_num = 0;
+        wifi_started = true;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
 }

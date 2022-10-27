@@ -83,6 +83,7 @@
 #include "esp_netif_types.h"
 #include "esp_netif_defaults.h"
 
+#include "nvs_flash_app.h"
 
 #define BROKER_URL "mqtt://mqtt.eclipseprojects.io:1883"
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_PSK
@@ -112,8 +113,14 @@
 #define PIN_NUM_CLK     19
 #define PIN_NUM_CS      13
 
+//NVS FLASH
 #define NVS_CONFIG_KEY "config_flash_region"
-#define NVS_DATA_SENSOR "data_sensor"
+#define NVS_DATA_PING "ping_data: %d"
+#define NVS_DATA_SENSOR "data_sensor: %d"
+static uint8_t ping_data_count_in_flash = 0;
+char ping_data_key [32];
+static uint8_t data_sensor_count_in_flash = 0;
+char data_sensor_key [32];
 
 
 static const char *TAG = "pppos_example";
@@ -159,6 +166,7 @@ uint8_t min_rx_buffer [UART_RINGBUFF_SIZE];
 char uart_buffer [UART_RINGBUFF_SIZE];
 min_context_t m_min_context;
 static min_frame_cfg_t m_min_setting = MIN_DEFAULT_CONFIG();
+// static xSemaphoreHandle s_semph_get_ip_addrs;
 
 static const min_msg_t ping_min_msg = {
     .id = MIN_ID_PING_ESP_ALIVE,
@@ -216,9 +224,9 @@ bool eth_started = false;
 bool gsm_started = false;
 
 void send_min_data(min_msg_t *min_msg);
-esp_err_t read_data_from_flash (void *data_read, uint16_t byte_read, const char* key);
-int32_t write_data_to_flash(void *data_write, size_t byte_write, const char* key);
-void init_nvs_flash(void );
+// esp_err_t read_data_from_flash (void *data_read, uint16_t byte_read, const char* key);
+// int32_t write_data_to_flash(void *data_write, size_t byte_write, const char* key);
+// void init_nvs_flash(void );
 void send_current_config (info_config_t config_infor_now);
 
 //********************* APP CLI VARIABLE ****************************//
@@ -464,8 +472,27 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
         // truoc do can doc cau hinh ra tu flash
         ESP_LOGI (TAG, "READ CONFIG DATA FROM FLASH");
         read_data_from_flash (&config_infor_now, sizeof (info_config_t), NVS_CONFIG_KEY);
-
         send_current_config (config_infor_now);
+        /*
+            quet data trong flash va gui len server
+        */
+        fire_status_t status_store_inflash;
+        for (uint8_t i = 0; i < ping_data_count_in_flash; i++)
+        {
+            sprintf (ping_data_key, NVS_DATA_PING, i);
+           // read_data_from_flash (&status_store_inflash, sizeof (fire_status_t), ping_data_key);
+            make_fire_status_payload (status_store_inflash, (char *)mqtt_payload); // Bo truong temper va fireZone
+            esp_mqtt_client_publish (mqtt_client, heart_beat_topic_header, mqtt_payload, 0, 0, 0);
+        }
+        sensor_info_t data_sensor_store_in_flash;
+        for (uint8_t i = 0; i < data_sensor_count_in_flash; i++)
+        {
+            sprintf (ping_data_key, NVS_DATA_SENSOR, i);
+            //read_data_from_flash (&data_sensor_store_in_flash, sizeof (fire_status_t), ping_data_key);
+            make_sensor_info_payload (data_sensor_store_in_flash, (char *)mqtt_payload); // Bo truong temper va fireZone
+            esp_mqtt_client_publish (mqtt_client, sensor_topic_header, mqtt_payload, 0, 0, 0);
+        }
+
         xEventGroupSetBits(event_group, MQTT_CONNECT_BIT);
         break;
     case MQTT_EVENT_DISCONNECTED:
@@ -544,7 +571,7 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
             ESP_LOGI (TAG, "Write config data to flash: %s", (err = ESP_OK) ? "Fail" : "OK");
             // doc ra tu flash
             ESP_LOGI (TAG, "Read config data from flash now");
-            read_data_from_flash (&config_infor_now, sizeof (info_config_t), NVS_CONFIG_KEY);
+           // read_data_from_flash (&config_infor_now, sizeof (info_config_t), NVS_CONFIG_KEY);
             send_current_config (config_infor_now);
         }
 
@@ -746,78 +773,78 @@ void send_current_config (info_config_t config_infor_now)
     esp_mqtt_client_publish(mqtt_client, config_topic_header, (char*)mqtt_payload, 0, 0, 0);
 }
 //******************************************* NVS PLACE *****************************///
-void init_nvs_flash(void )
-{
-    esp_err_t err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        // NVS partition was truncated and needs to be erased
-        // Retry nvs_flash_init
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        err = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(err);
-}
+// void init_nvs_flash(void )
+// {
+//     esp_err_t err = nvs_flash_init();
+//     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+//         // NVS partition was truncated and needs to be erased
+//         // Retry nvs_flash_init
+//         ESP_ERROR_CHECK(nvs_flash_erase());
+//         err = nvs_flash_init();
+//     }
+//     ESP_ERROR_CHECK(err);
+// }
 
-//  write data in flash
-int32_t write_data_to_flash(void *data_write, size_t byte_write, const char* key)
-{
-    nvs_handle_t my_handle;
-    esp_err_t ret = ESP_OK;
-    //OPEN FLASH
-    esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
-    ret |= err;
+// //  write data in flash
+// int32_t write_data_to_flash(void *data_write, size_t byte_write, const char* key)
+// {
+//     nvs_handle_t my_handle;
+//     esp_err_t ret = ESP_OK;
+//     //OPEN FLASH
+//     esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
+//     ret |= err;
 
-    if (err != ESP_OK) {
-        ESP_LOGI(TAG, "Error (%s) opening NVS handle!\n", esp_err_to_name(err));
-        // ghi lại gia tri mac dinh và them version control
-    } else {
-        ESP_LOGI(TAG, "OPEN Done, Writing data to key %s\n", key);
-        err = nvs_set_blob (my_handle, key, data_write, byte_write);
-        ESP_LOGI(TAG, "%s", (err != ESP_OK) ? "Failed!" : "Done");
-        ret |= err;
+//     if (err != ESP_OK) {
+//         ESP_LOGI(TAG, "Error (%s) opening NVS handle!\n", esp_err_to_name(err));
+//         // ghi lại gia tri mac dinh và them version control
+//     } else {
+//         ESP_LOGI(TAG, "OPEN Done, Writing data to key %s\n", key);
+//         err = nvs_set_blob (my_handle, key, data_write, byte_write);
+//         ESP_LOGI(TAG, "%s", (err != ESP_OK) ? "Failed!" : "Done");
+//         ret |= err;
 
-        ESP_LOGI(TAG, "\tCommitting updates string in NVS ... ");
-        err = nvs_commit(my_handle);
-        ESP_LOGI(TAG, "%s", (err != ESP_OK) ? "Failed!" : "Done");
-        ret |= err; 
+//         ESP_LOGI(TAG, "\tCommitting updates string in NVS ... ");
+//         err = nvs_commit(my_handle);
+//         ESP_LOGI(TAG, "%s", (err != ESP_OK) ? "Failed!" : "Done");
+//         ret |= err; 
 
-        nvs_close(my_handle);
-    }
-    return ret;
-}
+//         nvs_close(my_handle);
+//     }
+//     return ret;
+// }
 
-//read data blob from flash
-esp_err_t read_data_from_flash (void *data_read, uint16_t byte_read, const char* key)
-{
-    nvs_handle_t my_handle;
-    esp_err_t ret = ESP_OK;
-    esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
-    if (err != ESP_OK) {
-        ESP_LOGI(TAG, "Error (%s) opening NVS handle!\n", esp_err_to_name(err));
-        ret |= err;
-    } else 
-    {
-        esp_err_t err = nvs_get_blob(my_handle, key, data_read, (size_t*)&byte_read);
-        switch (err)
-        {
-        case ESP_OK:
-            break;
+// //read data blob from flash
+// esp_err_t read_data_from_flash (void *data_read, uint16_t byte_read, const char* key)
+// {
+//     nvs_handle_t my_handle;
+//     esp_err_t ret = ESP_OK;
+//     esp_err_t err = nvs_open("storage", NVS_READONLY, &my_handle);
+//     if (err != ESP_OK) {
+//         ESP_LOGI(TAG, "Error (%s) opening NVS handle!\n", esp_err_to_name(err));
+//         ret |= err;
+//     } else 
+//     {
+//         esp_err_t err = nvs_get_blob(my_handle, key, data_read, (size_t*)&byte_read);
+//         switch (err)
+//         {
+//         case ESP_OK:
+//             break;
 
-        case ESP_ERR_NVS_NOT_FOUND:
-            ESP_LOGW(TAG, "Key %s not found", key);
-            ret |= err;
-            break;
+//         case ESP_ERR_NVS_NOT_FOUND:
+//             ESP_LOGW(TAG, "Key %s not found", key);
+//             ret |= err;
+//             break;
 
-        default:
-            ESP_LOGE(TAG, "Error (%s) reading key %s!", esp_err_to_name(err), key);
-            ret |= err;
-            break;
-        }
-        nvs_close(my_handle);
-    }
-    //m_err_code = err;
-    return ret;
-}
+//         default:
+//             ESP_LOGE(TAG, "Error (%s) reading key %s!", esp_err_to_name(err), key);
+//             ret |= err;
+//             break;
+//         }
+//         nvs_close(my_handle);
+//     }
+//     //m_err_code = err;
+//     return ret;
+// }
 
 //Callback for user tasks created in app_main()
 void reset_task(void *arg)
@@ -862,6 +889,8 @@ uint32_t sys_get_ms(void)
 }
 
 esp_err_t err;
+
+node_sensor_data_t node_data;
 
 void min_rx_callback(void *min_context, min_msg_t *frame)
 {
@@ -926,9 +955,11 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
         }
         make_fire_status_payload (alarm_status, (char *)mqtt_payload); // Bo truong temper va fireZone
         // sau khi co tao xong payload  thi kiem tra tinh trang ket noi mang va luu vao flash neu mat mang hoac ban len server sau khi co mang lai
-        if ((alarm_status.networkStatus.value >> 5) == 0) // khong co mang
+        if ((alarm_status.networkStatus.value >> 5) == 0) // khong co mang haoc so sanh truc tiep tai bien nay
         {
-            err = write_data_to_flash (mqtt_payload, strlen ((char *)mqtt_payload), NVS_DATA_SENSOR);
+            ping_data_count_in_flash++;
+            sprintf (ping_data_key, NVS_DATA_PING, ping_data_count_in_flash);
+            err = write_data_to_flash (mqtt_payload, strlen ((char *)mqtt_payload), ping_data_key);
             ESP_LOGI (TAG, "Write heartbeat data  to flash: %s", (err = ESP_OK) ? "Fail" : "OK");
         }
         esp_mqtt_client_publish(mqtt_client, heart_beat_topic_header, (char*)mqtt_payload, 0, 0, 0);
@@ -953,8 +984,10 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
         make_sensor_info_payload (sensor_info, (char *)mqtt_payload); 
         if (!(gsm_started && wifi_started && eth_started))
         {
-            err = write_data_to_flash (mqtt_payload, strlen ((char *)mqtt_payload), NVS_DATA_SENSOR);
-            ESP_LOGI (TAG, "Write sensor data  to flash: %s", (err = ESP_OK) ? "Fail" : "OK");
+            data_sensor_count_in_flash++;
+            sprintf (data_sensor_key, NVS_DATA_SENSOR, data_sensor_count_in_flash);
+            err = write_data_to_flash (mqtt_payload, strlen ((char *)mqtt_payload), data_sensor_key);
+            ESP_LOGI (TAG, "Write sensor data to flash: %s", (err = ESP_OK) ? "Fail" : "OK");
         }
         esp_mqtt_client_publish(mqtt_client, sensor_topic_header, (char*)mqtt_payload, 0, 0, 0);
         break;
@@ -966,6 +999,19 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
         break;
     case MIN_ID_NEW_SENSOR_PAIRING:
         // luu vao flash de kiem soat
+        
+        memcpy (payload_buffer, frame->payload, 256);
+        char mac_key [64];
+        beacon_pair_info_t* pair_info;
+        pair_info = (beacon_pair_info_t*) payload_buffer;
+        {
+            memcpy (node_data.device_mac, pair_info->device_mac, 6);
+            node_data.device_type = pair_info->device_type;
+            build_string_from_MAC (node_data.device_mac, mac_key);
+            // write
+            size_t len = sizeof (node_sensor_data_t);
+            find_and_write_into_mac_key_space(&node_data, &len, mac_key);
+        }
         break;
     default:
         break;
@@ -982,6 +1028,11 @@ bool min_tx_byte(void *ctx, uint8_t byte)
 void send_min_data(min_msg_t *min_msg)
 {
 	min_send_frame(&m_min_context, min_msg);
+    if (min_msg->id == MIN_ID_SEND_KEY_CONFIG)
+    {
+        ESP_LOGI (TAG, "send key config");    
+    }
+    ESP_LOGI (TAG, "send min msg ID: %d", min_msg->id);
 }
 
 void build_min_tx_data_for_spi(min_msg_t* min_msg, uint8_t* data_spi, uint8_t size)
@@ -1078,31 +1129,57 @@ typedef enum
     NO_NETIF
 } network_netif;
 
+static bool is_our_netif(const char *prefix, esp_netif_t *netif)
+{
+    return strncmp(prefix, esp_netif_get_desc(netif), strlen(prefix) - 1) == 0;
+}
+
+esp_err_t get_interface_status (void)
+{
+    esp_netif_t *netif = NULL;
+    esp_netif_ip_info_t ip;
+
+    for (int i = 0; i < esp_netif_get_nr_of_ifs(); ++i) {
+        netif = esp_netif_next(netif);
+        if (is_our_netif(TAG, netif)) {
+            ESP_LOGI(TAG, "Now connected to %s", esp_netif_get_desc(netif));
+            ESP_ERROR_CHECK(esp_netif_get_ip_info(netif, &ip));
+            ESP_LOGI(TAG, "- IPv4 address: " IPSTR, IP2STR(&ip.ip));
+        }
+    }
+    
+    return ESP_OK;
+}
+
 static network_netif check_and_update_default_netif (void)
 {
-    // struct netif *netifs[3]; // there are 3 netif to handle
-    // netifs[GSM_NETIF] = gsm_esp_netif;
-    // netifs[ETH_NETIF] = eth_netif;
-    // netifs[WIFI_NETIF] = wifi_netif;
-    // if (netif_is_up(netifs[GSM_NETIF])) {
-    //     netif_set_default(netifs[GSM_NETIF]);
-    //     return GSM_NETIF;
-    // } else if (netif_is_up(netifs[TCPIP_ADAPTER_IF_ETH])) {
-    //     netif_set_default(netifs[ETH_NETIF]);
-    //     return ETH_NETIF;
-    // } else if (netif_is_up(netifs[WIFI_NETIF])) {
-    //     netif_set_default(netifs[WIFI_NETIF]);
-    //     return WIFI_NETIF;
-    // }
-
-    return WIFI_NETIF;
+    network_netif netif_now;
+    if (gsm_started)
+    {
+        netif_now = GSM_NETIF;
+    }
+    else if (eth_started)
+    {
+        netif_now = ETH_NETIF;
+    }
+    else if (wifi_started)
+    {
+        netif_now = WIFI_NETIF;
+    }
+    else
+    {
+        netif_now = NO_NETIF;
+    }
+    return netif_now;
 }
+
+
 
 void app_main(void)
 {
 #warning "need gpio config"
     gsm_gpio_config ();
-    
+
 
 #ifdef ESP32_S2
     // USB
@@ -1158,20 +1235,8 @@ void app_main(void)
     mqtt_info_queue = xQueueCreate(1, sizeof(mqtt_info_struct));
     
      xTaskCreate(uart_event_task, "uart_event_task", 2048, NULL, 12, NULL);
-//   dce = ec600s_init (dte); // dce init
     // after this we can test app cli
-    if (m_cli_started == false)
-	{
-		m_cli_started = true;
-		app_cli_start(&m_tcp_cli);
-		ESP_LOGI(TAG, "APP CLI STARTED \r\n");
-	}
-
-    while ( 1)
-    {
-        ESP_LOGI(TAG, "WAIT HERE TO TEST COMMAND LINE");
-        vTaskDelay (20000/portTICK_RATE_MS);
-    }
+    
     
     //wdt init
     //ESP_ERROR_CHECK(esp_task_wdt_init(TWDT_TIMEOUT_S, false));
@@ -1219,7 +1284,24 @@ void app_main(void)
     {
         ESP_LOGI (TAG, "DTE INIT FAIL");
     }
-    
+    while (1)
+    {
+        if (m_cli_started == false)
+        {
+            m_cli_started = true;
+            app_cli_start(&m_tcp_cli);
+            ESP_LOGI(TAG, "APP CLI STARTED \r\n");
+        }
+        uint8_t ch = '\0';
+        uart_read_bytes (UART_NUM_0, &ch, 1, 100);
+        if (ch)
+        {
+            app_cli_poll(ch);
+        }
+        // ESP_LOGI(TAG, "WAIT HERE TO TEST COMMAND LINE");
+        // send_min_data ((min_msg_t*) &ping_min_msg);
+        vTaskDelay (1/portTICK_RATE_MS);
+    }
 /*  uncomment this if there are no need gsm_task
     // Init netif object
     esp_netif_config_t cfg = ESP_NETIF_DEFAULT_PPP();
@@ -1367,7 +1449,6 @@ void app_main(void)
         mqtt_port = mqtt_broker_str.port;
         memcpy (mqtt_username, mqtt_broker_str.username, strlen (mqtt_broker_str.username));
         memcpy (mqtt_password, mqtt_broker_str.password, strlen (mqtt_broker_str.password));
-
         
         ESP_LOGI (TAG,"queue form host:%s\r\n", mqtt_host);
         ESP_LOGI (TAG,"queue form port:%d\r\n", mqtt_port);
@@ -1384,9 +1465,12 @@ void app_main(void)
 
     static uint32_t now;
     static uint32_t last_tick_cnt = 0;
+    
+    
     while(1)
     {
         send_min_data ((min_msg_t*) &ping_min_msg);
+        get_interface_status ();
         ESP_ERROR_CHECK(esp_task_wdt_reset());
         ESP_LOGI(TAG, "PROTOCOL USE: %d ", protocol_using);
 
@@ -1539,7 +1623,7 @@ void app_main(void)
         ESP_LOGI (TAG, "MQTT INIT");
         esp_mqtt_client_start(mqtt_client);
         //register topic
-        //if (memcmp (GSM_IMEI, "not init yet") != 0)
+        if (memcmp (GSM_IMEI, "not init yet", 16) != 0)
         {
             
             make_mqtt_topic_header (HEART_BEAT_HEADER, "smart_module", GSM_IMEI, heart_beat_topic_header);
@@ -1573,10 +1657,8 @@ void app_main(void)
             if ( (uxBits & MQTT_DIS_CONNECT_BIT) == MQTT_DIS_CONNECT_BIT)
             {
                 ESP_LOGI (TAG, "mqtt disconnected bitrev");
-                //network_connected = false;
-                change_protocol_using_to (ETHERNET_PROTOCOL);
-                //app_time();
                 vTaskDelay(5 / portTICK_PERIOD_MS);
+                //check if there are any interface to save data in flash
                 mqtt_server_ready = false;
                 break;
             }
