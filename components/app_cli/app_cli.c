@@ -153,10 +153,14 @@ static int32_t write_data_to_flash_test (p_shell_context_t context, int32_t argc
 static int32_t read_data_from_flash_test (p_shell_context_t context, int32_t argc, char **argv)
 {
     static info_config_t test_config_data;
-    static char str_test [512];
+    static char str_test [1024];
     uint16_t len = sizeof (info_config_t);
     read_data_from_flash (&test_config_data, &len, "test_flash");
     make_config_info_payload (test_config_data, str_test);
-    ESP_LOGI (TAG, "payload make: %s", str_test);
+    for (uint8_t i = 0; i < 8; i++)
+    {
+        ESP_LOGI (TAG, "payload: %s", str_test + 128);
+    }
+    
     return 0;
 }

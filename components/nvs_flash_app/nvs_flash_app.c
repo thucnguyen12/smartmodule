@@ -6,6 +6,50 @@
 static const char* TAG = "nvs_flash_app";
 static int32_t m_err_code = ESP_OK;
 
+
+
+type_of_mqtt_data_t get_type_of_data (char * key)
+{
+    type_of_mqtt_data_t type;
+    
+    if (strstr (key, "buzzerEnable") || strstr (key, syncAlarm))
+    {
+        type = BOOL_TYPE;
+    }
+    else if (strstr (key, "topicHeader")
+            || strstr (key, "mqttAddress") 
+            || strstr (key, "mqttUserName")
+            || strstr (key, "mqttPassword")
+            || strstr (key, "userPhoneNumber1")
+            || strstr (key, "userPhoneNumber2")
+            || strstr (key, "userPhoneNumber3")
+            || strstr (key, "httpDnsName")
+            || strstr (key, "httpDnsPass")
+            || strstr (key, "wifiname")
+            || strstr (key, "wifipass")
+            || strstr (key, "pingMainServer")
+            || strstr (key, "pingMainServer")
+            )
+    {
+        type = STRING_TYPE;
+    }
+    else
+    {
+        type = INT_TYPE;
+    }
+    return type;
+}
+
+
+void write_data_into_key_space (char * str_config)
+{
+    for (mqtt_config_list i = 0; i < MAX_CONFIG_HANDLE; i++)
+    {
+    
+    }
+
+}
+
 // typedef struct 
 // {
 //     uint8_t device_mac [6];
@@ -33,61 +77,7 @@ void build_string_from_MAC (uint8_t* device_mac, char * out_string)
 #define UNICAST_ADD_STORE_KEY "unicast_addr_key"
 #define UNICAST_ADDR_BASE 0X1000
 
-int32_t internal_flash_nvs_write_u16(char *key, uint16_t value)
-{
-    nvs_handle nvs_handle;
-    esp_err_t ret = ESP_OK;
-    esp_err_t err;
 
-    err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
-    ret |= err;
-
-    if (err == ESP_OK)
-    {
-        uint16_t tmp = 0;
-        err = nvs_get_u16(nvs_handle, key, &tmp);
-        if (err != ESP_OK
-            || tmp != value)
-        {
-            err = nvs_set_u16(nvs_handle, key, value);
-            ret |= err;
-            err = nvs_commit(nvs_handle);
-        }
-        ret |= err;
-        nvs_close(nvs_handle);
-    }
-    
-    if (err)
-    {
-        ESP_LOGW(TAG, "Error (%s) write NVS handle!", esp_err_to_name(err));
-    }
-    m_err_code = err;
-
-    return ret;
-}
-
-int32_t internal_flash_nvs_get_u16(char *key, uint16_t *value)
-{
-    nvs_handle nvs_handle;
-    esp_err_t ret = ESP_OK;
-    esp_err_t err;
-
-    err = nvs_open("storage", NVS_READONLY, &nvs_handle);
-    ret |= err;
-
-    if (err == ESP_OK)
-    {
-        err = nvs_get_u16(nvs_handle, key, value);
-        ret |= err;
-        nvs_close(nvs_handle);
-    }
-    else
-    {
-        ESP_LOGW(TAG, "Error (%s) opening NVS handle!", esp_err_to_name(err));
-    }
-    m_err_code = err;
-    return ret;
-}
 
 uint16_t get_and_store_new_unicast_addr_now (void)
 {
@@ -277,4 +267,304 @@ int32_t internal_flash_nvs_read_string(char *key, char *buffer, uint32_t max_siz
     return err;
 }
 
+int32_t internal_flash_nvs_write_u32(char *key, uint32_t value)
+{
+    nvs_handle nvs_handle;
+    esp_err_t ret = ESP_OK;
+    esp_err_t err;
+
+    err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
+    ret |= err;
+
+    if (err == ESP_OK)
+    {
+        uint32_t tmp = 0;
+        err = nvs_get_u32(nvs_handle, key, &tmp);
+        if (err != ESP_OK
+            || tmp != value)
+        {
+            err = nvs_set_u32(nvs_handle, key, value);
+            ret |= err;
+            err = nvs_commit(nvs_handle);
+        }
+        ret |= err;
+        nvs_close(nvs_handle);
+    }
+    
+    m_err_code = err;
+    if (err)
+    {
+        ESP_LOGW(TAG, "Error (%s) write NVS handle!", esp_err_to_name(err));
+    }
+
+    return ret;
+}
+
+int32_t internal_flash_nvs_get_u32(char *key, uint32_t *value)
+{
+    nvs_handle nvs_handle;
+    esp_err_t ret = ESP_OK;
+    esp_err_t err;
+
+    err = nvs_open("storage", NVS_READONLY, &nvs_handle);
+    ret |= err;
+
+    if (err == ESP_OK)
+    {
+        err = nvs_get_u32(nvs_handle, key, value);
+        ret |= err;
+        nvs_close(nvs_handle);
+    }
+    else
+    {
+        ESP_LOGW(TAG, "Error (%s) opening NVS handle!", esp_err_to_name(err));
+    }
+    m_err_code = err;
+    return err;
+}
+
+int32_t internal_flash_nvs_write_u16(char *key, uint16_t value)
+{
+    nvs_handle nvs_handle;
+    esp_err_t ret = ESP_OK;
+    esp_err_t err;
+
+    err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
+    ret |= err;
+
+    if (err == ESP_OK)
+    {
+        uint16_t tmp = 0;
+        err = nvs_get_u16(nvs_handle, key, &tmp);
+        if (err != ESP_OK
+            || tmp != value)
+        {
+            err = nvs_set_u16(nvs_handle, key, value);
+            ret |= err;
+            err = nvs_commit(nvs_handle);
+        }
+        ret |= err;
+        nvs_close(nvs_handle);
+    }
+    
+    if (err)
+    {
+        ESP_LOGW(TAG, "Error (%s) write NVS handle!", esp_err_to_name(err));
+    }
+    m_err_code = err;
+
+    return ret;
+}
+
+int32_t internal_flash_nvs_get_u16(char *key, uint16_t *value)
+{
+    nvs_handle nvs_handle;
+    esp_err_t ret = ESP_OK;
+    esp_err_t err;
+
+    err = nvs_open("storage", NVS_READONLY, &nvs_handle);
+    ret |= err;
+
+    if (err == ESP_OK)
+    {
+        err = nvs_get_u16(nvs_handle, key, value);
+        ret |= err;
+        nvs_close(nvs_handle);
+    }
+    else
+    {
+        ESP_LOGW(TAG, "Error (%s) opening NVS handle!", esp_err_to_name(err));
+    }
+    m_err_code = err;
+    return ret;
+}
+
+int32_t internal_flash_nvs_write_u8(char *key, uint8_t value)
+{
+    nvs_handle nvs_handle;
+    esp_err_t ret = ESP_OK;
+    esp_err_t err;
+
+    err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
+    ret |= err;
+
+    if (err == ESP_OK)
+    {
+        uint8_t tmp = 0;
+        err = nvs_get_u8(nvs_handle, key, &tmp);
+        if (err != ESP_OK
+            || tmp != value)
+        {
+            err = nvs_set_u8(nvs_handle, key, value);
+            ret |= err;
+            err = nvs_commit(nvs_handle);
+        }
+        ret |= err;
+        nvs_close(nvs_handle);
+    }
+    m_err_code = err;
+    if (err)
+    {
+        ESP_LOGW(TAG, "Error (%s) write NVS handle!", esp_err_to_name(err));
+    }
+
+    return ret;
+}
+
+int32_t internal_flash_nvs_get_u8(char *key, uint8_t *value)
+{
+    nvs_handle nvs_handle;
+    esp_err_t ret = ESP_OK;
+    esp_err_t err;
+
+    err = nvs_open("storage", NVS_READONLY, &nvs_handle);
+    ret |= err;
+
+    if (err == ESP_OK)
+    {
+        err = nvs_get_u8(nvs_handle, key, value);
+        ret |= err;
+        nvs_close(nvs_handle);
+    }
+    else
+    {
+        ESP_LOGW(TAG, "Error (%s) opening NVS handle!", esp_err_to_name(err));
+    }
+    m_err_code = err;
+    return err;
+}
+
+void read_config_data_from_flash (info_config_t* config, type_of_mqtt_data_t data_type, mqtt_config_list mqtt_config_list)
+{
+    switch (data_type)
+    {
+    case STRING_TYPE:
+        /* code */
+        if (mqtt_config_list == TOPIC_HDR)
+            {
+                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->topic_hr) ,sizeof (config->topic_hr));
+                // memcpy (config_infor_now.topic_hr, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == MQTT_ADDR)
+            {
+                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->mqtt_add) ,sizeof (config->mqtt_add));
+                // memcpy (config_infor_now.mqtt_add, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == MQTT_USER)
+            {
+                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->mqtt_user) ,sizeof (config->mqtt_user));
+                // memcpy (config_infor_now.mqtt_pass, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == MQTT_PW)
+            {
+                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->mqtt_pass) ,sizeof (config->mqtt_pass));
+                // memcpy (config_infor_now.mqtt_pass, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == PHONE_NUM_1)
+            {
+                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->userPhoneNumber1) ,sizeof (config->userPhoneNumber1));
+                // memcpy (config_infor_now.userPhoneNumber1, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == PHONE_NUM_2)
+            {
+                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->userPhoneNumber2) ,sizeof (config->userPhoneNumber2));
+                // memcpy (config_infor_now.userPhoneNumber2, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == PHONE_NUM_3)
+            {
+                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->userPhoneNumber3) ,sizeof (config->userPhoneNumber3));
+                // memcpy (config_infor_now.userPhoneNumber3, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == DNS_NAME)
+            {
+                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->httpDnsName) ,sizeof (config->httpDnsName));
+                // memcpy (config_infor_now.httpDnsName, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == DNS_USER)
+            {
+                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->httpUsername) ,sizeof (config->httpUsername));
+                // memcpy (config_infor_now.httpUsername, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == DNS_PASS)
+            {
+                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->httpDnsPass) ,sizeof (config->httpDnsPass));
+                // memcpy (config_infor_now.httpUsername, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == WIFI_NAME)
+            {
+                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->wifiname) ,sizeof (config->wifiname));
+                // memcpy (config_infor_now.httpUsername, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == WIFI_PASS)
+            {
+                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->wifipass) ,sizeof (config->wifipass));
+                // memcpy (config_infor_now.wifipass, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == PING_MAIN_SERVER)
+            {
+                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->pingMainServer) ,sizeof (config->pingMainServer));
+                // memcpy (config_infor_now.pingMainServer, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == PING_BACKUP_SERVER)
+            {
+                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->pingBackupServer) ,sizeof (config->pingBackupServer));
+                // memcpy (config_infor_now.pingBackupServer, string_value, strlen ((char*)string_value));
+            }
+        break;
+    case INT_TYPE:
+        if (mqtt_config_list == CHARG_INTERVAL)
+        {
+            internal_flash_nvs_get_u16(key_table[mqtt_config_list], &(config->charg_interval));
+            // config_infor_now.charg_interval = int_value;
+        }
+        else if (mqtt_config_list == UNCHARG_INTERVAL)
+        {
+            internal_flash_nvs_get_u16(key_table[mqtt_config_list], &(config->uncharg_interval));
+            // config_infor_now.uncharg_interval = int_value;
+        } 
+        else if (mqtt_config_list == SMOKE_WAKE)
+        {
+            internal_flash_nvs_get_u16(key_table[mqtt_config_list], &(config->smokeSensorWakeupInterval));
+            // config_infor_now.smokeSensorWakeupInterval = int_value;
+        } 
+        else if (mqtt_config_list == SMOKE_HEARTBEAT)
+        {
+            internal_flash_nvs_get_u16(key_table[mqtt_config_list], &(config->smokeSensorHeartbeatInterval));
+            // config_infor_now.smokeSensorHeartbeatInterval = int_value;
+        }
+        else if (mqtt_config_list == SMOKE_THRESH)
+        {
+            internal_flash_nvs_get_u16(key_table[mqtt_config_list], &(config->smokeSensorThresHole));
+            // config_infor_now.smokeSensorThresHole = int_value;
+        }
+        else if (mqtt_config_list == TEMPER_WAKE)
+        {
+            internal_flash_nvs_get_u16(key_table[mqtt_config_list], &(config->tempSensorWakeupInterval));
+            // config_infor_now.tempSensorWakeupInterval = int_value;
+        }
+        else if (mqtt_config_list == TEMPER_HEARTBEAT)
+        {
+            internal_flash_nvs_get_u16(key_table[mqtt_config_list], &(config->tempSensorHeartbeatInterval));
+            // config_infor_now.tempSensorHeartbeatInterval = int_value;
+        }
+        else if (mqtt_config_list == TEMPER_THRESH)
+        {
+            internal_flash_nvs_get_u16(key_table[mqtt_config_list], &(config->tempSensorHeartbeatInterval));
+            // config_infor_now.tempThresHold = int_value;
+        }
+        break;
+    case BOOL_TYPE:
+        if (mqtt_config_list == SYNC_ALARM)
+        {
+            internal_flash_nvs_get_u8 (key_table[mqtt_config_list],  &(config->syncAlarm));
+        }
+        else if (mqtt_config_list == BUZZ_EN)
+        {
+            internal_flash_nvs_get_u8 (key_table[mqtt_config_list],  &(config->buzzerEnable));
+        }
+        break;
+    default:
+        break;
+    }
+}
 

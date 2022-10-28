@@ -453,6 +453,132 @@ static void modem_event_handler(void *event_handler_arg, esp_event_base_t event_
     }
 }
 
+void process_config_data (type_of_mqtt_data_t data_type, mqtt_config_list mqtt_config_list , void* string_value, int int_value, bool bool_value)
+{
+    switch (data_type)
+    {
+    case STRING_TYPE:
+        if (string_value != NULL)
+        {
+            if (mqtt_config_list == TOPIC_HDR)
+            {
+                memcpy (config_infor_now.topic_hr, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == MQTT_ADDR)
+            {
+                memcpy (config_infor_now.mqtt_add, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == MQTT_USER)
+            {
+                memcpy (config_infor_now.mqtt_user, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == MQTT_PW)
+            {
+                memcpy (config_infor_now.mqtt_pass, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == PHONE_NUM_1)
+            {
+                memcpy (config_infor_now.userPhoneNumber1, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == PHONE_NUM_2)
+            {
+                memcpy (config_infor_now.userPhoneNumber2, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == PHONE_NUM_3)
+            {
+                memcpy (config_infor_now.userPhoneNumber3, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == DNS_NAME)
+            {
+                memcpy (config_infor_now.httpDnsName, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == DNS_USER)
+            {
+                memcpy (config_infor_now.httpUsername, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == DNS_PASS)
+            {
+                memcpy (config_infor_now.httpDnsPass, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == WIFI_NAME)
+            {
+                memcpy (config_infor_now.wifiname, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == WIFI_PASS)
+            {
+                memcpy (config_infor_now.wifipass, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == PING_MAIN_SERVER)
+            {
+                memcpy (config_infor_now.pingMainServer, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == PING_BACKUP_SERVER)
+            {
+                memcpy (config_infor_now.pingBackupServer, string_value, strlen ((char*)string_value));
+            }
+            // ghi data vao flash
+            internal_flash_nvs_write_string (key_table[mqtt_config_list], string_value);
+        }
+        break;
+    case INT_TYPE:
+        if (mqtt_config_list == CHARG_INTERVAL)
+        {
+            config_infor_now.charg_interval = int_value;
+        }
+        
+        if (mqtt_config_list == UNCHARG_INTERVAL)
+        {
+            config_infor_now.uncharg_interval = int_value;
+        }
+        
+        if (mqtt_config_list == SMOKE_WAKE)
+        {
+            config_infor_now.smokeSensorWakeupInterval = int_value;
+        }
+        
+        if (mqtt_config_list == SMOKE_HEARTBEAT)
+        {
+            config_infor_now.smokeSensorHeartbeatInterval = int_value;
+        }
+        
+        if (mqtt_config_list == SMOKE_THRESH)
+        {
+            config_infor_now.smokeSensorThresHole = int_value;
+        }
+        
+        if (mqtt_config_list == TEMPER_WAKE)
+        {
+            config_infor_now.tempSensorWakeupInterval = int_value;
+        }
+        
+        if (mqtt_config_list == TEMPER_HEARTBEAT)
+        {
+            config_infor_now.tempSensorHeartbeatInterval = int_value;
+        }
+
+        if (mqtt_config_list == TEMPER_THRESH)
+        {
+            config_infor_now.tempThresHold = int_value;
+        }
+        internal_flash_nvs_write_u16 (key_table[mqtt_config_list], int_value);
+        break;
+    case BOOL_TYPE:
+        if (mqtt_config_list == BUZZ_EN)
+        {
+            config_infor_now.buzzerEnable = bool_value;
+        }
+        else if (mqtt_config_list == SYNC_ALARM)
+        {
+            config_infor_now.syncAlarm = bool_value;
+        }
+        internal_flash_nvs_write_u8 (key_table[mqtt_config_list], (uint8_t)bool_value);
+        break;
+    default:
+        break;
+    }
+}
+
+
 
 static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
 {
@@ -471,28 +597,39 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
         esp_mqtt_client_publish(mqtt_client, info_topic_header, (char*)mqtt_payload, 0, 0, 0);
         // truoc do can doc cau hinh ra tu flash
         ESP_LOGI (TAG, "READ CONFIG DATA FROM FLASH");
-        read_data_from_flash (&config_infor_now, sizeof (info_config_t), NVS_CONFIG_KEY);
+        // read_data_from_flash (&config_infor_now, sizeof (info_config_t), NVS_CONFIG_KEY);
+        // send_current_config (config_infor_now);
+        
+        
+        for (mqtt_config_list i = 0; i < MAX_CONFIG_HANDLE; i++)
+        {
+            type_of_mqtt_data_t type_of_process_data = get_type_of_data (key_table[i]);
+            read_config_data_from_flash (&config_infor_now, type_of_process_data, i);
+        }
         send_current_config (config_infor_now);
         /*
             quet data trong flash va gui len server
         */
-        fire_status_t status_store_inflash;
+        // fire_status_t status_store_inflash;
         for (uint8_t i = 0; i < ping_data_count_in_flash; i++)
         {
             sprintf (ping_data_key, NVS_DATA_PING, i);
-           // read_data_from_flash (&status_store_inflash, sizeof (fire_status_t), ping_data_key);
-            make_fire_status_payload (status_store_inflash, (char *)mqtt_payload); // Bo truong temper va fireZone
+            // read_data_from_flash (&status_store_inflash, sizeof (fire_status_t), ping_data_key);
+            internal_flash_nvs_read_string (ping_data_key, mqtt_payload, sizeof (mqtt_payload));
+            // make_fire_status_payload (status_store_inflash, (char *)mqtt_payload); // Bo truong temper va fireZone
             esp_mqtt_client_publish (mqtt_client, heart_beat_topic_header, mqtt_payload, 0, 0, 0);
         }
-        sensor_info_t data_sensor_store_in_flash;
+        ping_data_count_in_flash = 0; // reset after send all data in flash
+        // sensor_info_t data_sensor_store_in_flash;
         for (uint8_t i = 0; i < data_sensor_count_in_flash; i++)
         {
             sprintf (ping_data_key, NVS_DATA_SENSOR, i);
             //read_data_from_flash (&data_sensor_store_in_flash, sizeof (fire_status_t), ping_data_key);
-            make_sensor_info_payload (data_sensor_store_in_flash, (char *)mqtt_payload); // Bo truong temper va fireZone
+            internal_flash_nvs_read_string (ping_data_key, mqtt_payload, sizeof (mqtt_payload));
+            // make_sensor_info_payload (data_sensor_store_in_flash, (char *)mqtt_payload); // Bo truong temper va fireZone
             esp_mqtt_client_publish (mqtt_client, sensor_topic_header, mqtt_payload, 0, 0, 0);
         }
-
+        data_sensor_count_in_flash = 0; // reset after send all data in flash
         xEventGroupSetBits(event_group, MQTT_CONNECT_BIT);
         break;
     case MQTT_EVENT_DISCONNECTED:
@@ -547,30 +684,89 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
 
         if (strstr (event->topic, "/g2d/config/"))
         {
-            memcpy (&config_infor_from_server, event->data, sizeof (info_config_from_server_t));
-            memcpy (config_infor_now.topic_hr, config_infor_from_server.topic_hr, sizeof (config_infor_now.topic_hr));
-            memcpy (config_infor_now.mqtt_add, config_infor_from_server.mqtt_add, sizeof (config_infor_now.topic_hr));
-            memcpy (config_infor_now.mqtt_user, config_infor_from_server.mqtt_user, sizeof (config_infor_now.topic_hr));
-            memcpy (config_infor_now.mqtt_pass, config_infor_from_server.mqtt_pass, sizeof (config_infor_now.topic_hr));
-            memcpy (config_infor_now.userPhoneNumber1, config_infor_from_server.userPhoneNumber1, sizeof (config_infor_now.topic_hr));
-            memcpy (config_infor_now.userPhoneNumber2, config_infor_from_server.userPhoneNumber2, sizeof (config_infor_now.topic_hr));
-            memcpy (config_infor_now.userPhoneNumber3, config_infor_from_server.userPhoneNumber3, sizeof (config_infor_now.topic_hr));
-            memcpy (config_infor_now.networkAddress, config_infor_from_server.networkAddress, sizeof (config_infor_now.topic_hr));
-            config_infor_now.charg_interval = config_infor_from_server.charg_interval;
-            config_infor_now.uncharg_interval = config_infor_from_server.uncharg_interval;
-            config_infor_now.buzzerEnable = config_infor_from_server.buzzerEnable;
-            config_infor_now.syncAlarm = config_infor_from_server.syncAlarm;
-            config_infor_now.smokeSensorWakeupInterval = config_infor_from_server.smokeSensorWakeupInterval;
-            config_infor_now.smokeSensorHeartbeatInterval = config_infor_from_server.smokeSensorHeartbeatInterval;
-            config_infor_now.smokeSensorThresHole = config_infor_from_server.smokeSensorThresHole;
-            config_infor_now.tempSensorHeartbeatInterval = config_infor_from_server.tempSensorHeartbeatInterval;
-            config_infor_now.tempSensorWakeupInterval = config_infor_from_server.smokeSensorWakeupInterval;
-            config_infor_now.tempThresHold = config_infor_from_server.tempThresHold;
+            cJSON* process_json = NULL;
+            // cJSON* mqtt_add = NULL;
+            // cJSON* mqtt_user = NULL;
+            // cJSON* mqtt_pass = NULL;
+            // cJSON* charg_interval = NULL;
+            // cJSON* uncharg_interval = NULL;
+            // cJSON* userPhoneNumber1 = NULL;
+            // cJSON* userPhoneNumber2 = NULL;
+            // cJSON* userPhoneNumber3 = NULL;
+            // cJSON* networkAddress = NULL;
+            // cJSON* buzzerEnable = NULL;
+            // cJSON* syncAlarm = NULL;
+            // cJSON* smokeSensorWakeupInterval = NULL;
+            // cJSON* smokeSensorHeartbeatInterval = NULL;
+            // cJSON* smokeSensorThresHole = NULL;
+            // cJSON* tempSensorHeartbeatInterval = NULL;
+            // cJSON* tempSensorWakeupInterval = NULL;
+            // cJSON* tempSensorHeartbeatInterval = NULL;
+            // cJSON* tempThresHold = NULL;
+            cJSON* config_json = NULL;
+            char* config = strstr (event->data, "{");
+            config_json = parse_json (config);
+            for (mqtt_config_list i = 0; i < MAX_CONFIG_HANDLE; i++)
+            {
+                process_json = NULL;
+                process_json = cJSON_GetObjectItemCaseSensitive (config, key_table[i]);
+                if (process_json == NULL)
+                {
+                    // if not found string
+                    continue;
+                }
+                type_of_mqtt_data_t type_of_process_data = get_type_of_data (key_table[i]);
+                if (type_of_process_data == STRING_TYPE)
+                {
+                    if (cJSON_IsString(process_json))
+                    {
+                        process_config_data(type_of_process_data, i, process_json->valuestring, 0 , 0);
+                    }
+                }
+                else if (type_of_process_data == INT_TYPE)
+                {
+                    if (cJSON_IsNumber(process_json))
+                    {
+                        process_config_data(type_of_process_data, i, NULL, process_json->valueint , 0);
+                    }
+                }
+                else if (type_of_process_data == BOOL_TYPE)
+                {
+                    if (cJSON_IsBool(process_json) == cJSON_True)
+                    {
+                        process_config_data(type_of_process_data, i, NULL, 0, true);
+                    }
+                    else if (cJSON_IsBool(process_json) == cJSON_False)
+                    {
+                        process_config_data(type_of_process_data, i, NULL, 0, false);
+                    }
+                }
+            }
+
+            // memcpy (&config_infor_from_server, event->data, sizeof (info_config_from_server_t));
+            // memcpy (config_infor_now.topic_hr, config_infor_from_server.topic_hr, sizeof (config_infor_now.topic_hr));
+            // memcpy (config_infor_now.mqtt_add, config_infor_from_server.mqtt_add, sizeof (config_infor_now.topic_hr));
+            // memcpy (config_infor_now.mqtt_user, config_infor_from_server.mqtt_user, sizeof (config_infor_now.topic_hr));
+            // memcpy (config_infor_now.mqtt_pass, config_infor_from_server.mqtt_pass, sizeof (config_infor_now.topic_hr));
+            // memcpy (config_infor_now.userPhoneNumber1, config_infor_from_server.userPhoneNumber1, sizeof (config_infor_now.topic_hr));
+            // memcpy (config_infor_now.userPhoneNumber2, config_infor_from_server.userPhoneNumber2, sizeof (config_infor_now.topic_hr));
+            // memcpy (config_infor_now.userPhoneNumber3, config_infor_from_server.userPhoneNumber3, sizeof (config_infor_now.topic_hr));
+            // memcpy (config_infor_now.networkAddress, config_infor_from_server.networkAddress, sizeof (config_infor_now.topic_hr));
+            // config_infor_now.charg_interval = config_infor_from_server.charg_interval;
+            // config_infor_now.uncharg_interval = config_infor_from_server.uncharg_interval;
+            // config_infor_now.buzzerEnable = config_infor_from_server.buzzerEnable;
+            // config_infor_now.syncAlarm = config_infor_from_server.syncAlarm;
+            // config_infor_now.smokeSensorWakeupInterval = config_infor_from_server.smokeSensorWakeupInterval;
+            // config_infor_now.smokeSensorHeartbeatInterval = config_infor_from_server.smokeSensorHeartbeatInterval;
+            // config_infor_now.smokeSensorThresHole = config_infor_from_server.smokeSensorThresHole;
+            // config_infor_now.tempSensorHeartbeatInterval = config_infor_from_server.tempSensorHeartbeatInterval;
+            // config_infor_now.tempSensorWakeupInterval = config_infor_from_server.smokeSensorWakeupInterval;
+            // config_infor_now.tempThresHold = config_infor_from_server.tempThresHold;
             // lưu lại - can luu vao flash
-            esp_err_t err = write_data_to_flash (&config_infor_now, sizeof (info_config_t), NVS_CONFIG_KEY);
-            ESP_LOGI (TAG, "Write config data to flash: %s", (err = ESP_OK) ? "Fail" : "OK");
-            // doc ra tu flash
-            ESP_LOGI (TAG, "Read config data from flash now");
+            // esp_err_t err = write_data_to_flash (&config_infor_now, sizeof (info_config_t), NVS_CONFIG_KEY);
+            // ESP_LOGI (TAG, "Write config data to flash: %s", (err = ESP_OK) ? "Fail" : "OK");
+            // // doc ra tu flash
+            // ESP_LOGI (TAG, "Read config data from flash now");
            // read_data_from_flash (&config_infor_now, sizeof (info_config_t), NVS_CONFIG_KEY);
             send_current_config (config_infor_now);
         }
@@ -959,12 +1155,17 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
         {
             ping_data_count_in_flash++;
             sprintf (ping_data_key, NVS_DATA_PING, ping_data_count_in_flash);
-            err = write_data_to_flash (mqtt_payload, strlen ((char *)mqtt_payload), ping_data_key);
-            ESP_LOGI (TAG, "Write heartbeat data  to flash: %s", (err = ESP_OK) ? "Fail" : "OK");
+            // err = write_data_to_flash (mqtt_payload, strlen ((char *)mqtt_payload), ping_data_key);
+            err = internal_flash_nvs_write_string (ping_data_key, mqtt_payload);
+            ESP_LOGI (TAG, "Write heartbeat data to flash: %s", (err = ESP_OK) ? "Fail" : "OK");
         }
-        esp_mqtt_client_publish(mqtt_client, heart_beat_topic_header, (char*)mqtt_payload, 0, 0, 0);
+        else
+        {
+            esp_mqtt_client_publish(mqtt_client, heart_beat_topic_header, (char*)mqtt_payload, 0, 0, 0);
+        }
         break;
     case MIN_ID_SEND_AND_RECEIVE_BEACON_MSG:
+
         memcpy (payload_buffer, frame->payload, 256);
         beacon_data_handle = (app_beacon_data_t *) payload_buffer;
         memcpy(sensor_info.mac, beacon_data_handle->device_mac, 6);
@@ -980,22 +1181,26 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
         sensor_info.temperature = beacon_data_handle->teperature_value;
         sensor_info.smoke = beacon_data_handle->smoke_value;
         sensor_info.updateTime = app_time ();
-
+        ESP_LOGI (TAG, "Sensor data event")
         make_sensor_info_payload (sensor_info, (char *)mqtt_payload); 
         if (!(gsm_started && wifi_started && eth_started))
         {
             data_sensor_count_in_flash++;
             sprintf (data_sensor_key, NVS_DATA_SENSOR, data_sensor_count_in_flash);
-            err = write_data_to_flash (mqtt_payload, strlen ((char *)mqtt_payload), data_sensor_key);
+            // err = write_data_to_flash (mqtt_payload, strlen ((char *)mqtt_payload), data_sensor_key);
+            err = internal_flash_nvs_write_string (ping_data_key, mqtt_payload);
             ESP_LOGI (TAG, "Write sensor data to flash: %s", (err = ESP_OK) ? "Fail" : "OK");
         }
-        esp_mqtt_client_publish(mqtt_client, sensor_topic_header, (char*)mqtt_payload, 0, 0, 0);
+        else 
+        {
+            esp_mqtt_client_publish(mqtt_client, sensor_topic_header, (char*)mqtt_payload, 0, 0, 0);//only send when network is starteed
+        }
         break;
     case MIN_ID_PING_ESP_ALIVE:
         ESP_LOGI (TAG, "test ping gd32 ok, uart pass");
         break;
     case MIN_ID_PING_RESPONSE:
-        ESP_LOGI (TAG, "ping gd 32ok, uart pass");
+        ESP_LOGI (TAG, "ping gd 32 ok, uart pass");
         break;
     case MIN_ID_NEW_SENSOR_PAIRING:
         // luu vao flash de kiem soat

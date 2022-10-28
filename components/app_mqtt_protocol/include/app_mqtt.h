@@ -95,7 +95,6 @@ typedef struct
     char wifiname [64];
     char wifipass [64];
     int wifiDisable;
-    int reset;
     char pingMainServer[64];
     char pingBackupServer [64];
     int inputActiveLevel;
@@ -104,27 +103,27 @@ typedef struct
     int zoneDelay;
 }__attribute__((packed)) info_config_t;
 
-typedef struct 
-{
-    char topic_hr [20];
-    char mqtt_add [20];
-    char mqtt_user [20];
-    char mqtt_pass [20];
-    int charg_interval;
-    int uncharg_interval;
-    char userPhoneNumber1 [10];
-    char userPhoneNumber2 [10];
-    char userPhoneNumber3 [10];
-    bool buzzerEnable;
-    bool syncAlarm;
-    char networkAddress[20];
-    int smokeSensorWakeupInterval;
-    int smokeSensorHeartbeatInterval;
-    int smokeSensorThresHole;
-    int tempSensorWakeupInterval;
-    int tempSensorHeartbeatInterval;
-    int tempThresHold;
-}__attribute__((packed)) info_config_from_server_t;
+// typedef struct 
+// {
+//     char topic_hr [20];
+//     char mqtt_add [20];
+//     char mqtt_user [20];
+//     char mqtt_pass [20];
+//     int charg_interval;
+//     int uncharg_interval;
+//     char userPhoneNumber1 [10];
+//     char userPhoneNumber2 [10];
+//     char userPhoneNumber3 [10];
+//     bool buzzerEnable;
+//     bool syncAlarm;
+//     char networkAddress[20];
+//     int smokeSensorWakeupInterval;
+//     int smokeSensorHeartbeatInterval;
+//     int smokeSensorThresHole;
+//     int tempSensorWakeupInterval;
+//     int tempSensorHeartbeatInterval;
+//     int tempThresHold;
+// }__attribute__((packed)) info_config_from_server_t;
 
 typedef enum 
 {
