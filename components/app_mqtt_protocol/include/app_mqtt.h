@@ -76,9 +76,9 @@ typedef struct
     char mqtt_pass [20];
     int charg_interval;
     int uncharg_interval;
-    char userPhoneNumber1 [10];
-    char userPhoneNumber2 [10];
-    char userPhoneNumber3 [10];
+    char userPhoneNumber1 [13];
+    char userPhoneNumber2 [13];
+    char userPhoneNumber3 [13];
     bool buzzerEnable;
     bool syncAlarm;
     char networkAddress[20];

@@ -111,7 +111,12 @@
 #define PIN_NUM_MISO    18
 #define PIN_NUM_MOSI    23
 #define PIN_NUM_CLK     19
-#define PIN_NUM_CS      13
+#define PIN_NUM_CS 0     13
+
+extern char* key_table;
+
+
+
 
 //NVS FLASH
 #define NVS_CONFIG_KEY "config_flash_region"
@@ -211,7 +216,7 @@ char mqtt_payload [512];
 char* ota_server_str_buff;
 
 static info_config_t config_infor_now;
-info_config_from_server_t config_infor_from_server;
+// info_config_from_server_t config_infor_from_server;
 
 //extern char recv_buf[64];
 //General variable
@@ -455,6 +460,8 @@ static void modem_event_handler(void *event_handler_arg, esp_event_base_t event_
 
 void process_config_data (type_of_mqtt_data_t data_type, mqtt_config_list mqtt_config_list , void* string_value, int int_value, bool bool_value)
 {
+    static char string_key[32];
+    make_key_to_store_type_in_nvs (string_key, mqtt_config_list);
     switch (data_type)
     {
     case STRING_TYPE:
@@ -517,7 +524,7 @@ void process_config_data (type_of_mqtt_data_t data_type, mqtt_config_list mqtt_c
                 memcpy (config_infor_now.pingBackupServer, string_value, strlen ((char*)string_value));
             }
             // ghi data vao flash
-            internal_flash_nvs_write_string (key_table[mqtt_config_list], string_value);
+            internal_flash_nvs_write_string (string_key, string_value);
         }
         break;
     case INT_TYPE:
@@ -560,7 +567,8 @@ void process_config_data (type_of_mqtt_data_t data_type, mqtt_config_list mqtt_c
         {
             config_infor_now.tempThresHold = int_value;
         }
-        internal_flash_nvs_write_u16 (key_table[mqtt_config_list], int_value);
+
+        internal_flash_nvs_write_u16 (string_key, int_value);
         break;
     case BOOL_TYPE:
         if (mqtt_config_list == BUZZ_EN)
@@ -571,7 +579,7 @@ void process_config_data (type_of_mqtt_data_t data_type, mqtt_config_list mqtt_c
         {
             config_infor_now.syncAlarm = bool_value;
         }
-        internal_flash_nvs_write_u8 (key_table[mqtt_config_list], (uint8_t)bool_value);
+        internal_flash_nvs_write_u8 (string_key, (uint8_t)bool_value);
         break;
     default:
         break;
@@ -584,6 +592,8 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
 {
     esp_mqtt_client_handle_t client = event->client;
     int msg_id;
+    char string_key[32];
+    type_of_mqtt_data_t type_of_process_data = 0;
     switch (event->event_id) {
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
@@ -600,11 +610,16 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
         // read_data_from_flash (&config_infor_now, sizeof (info_config_t), NVS_CONFIG_KEY);
         // send_current_config (config_infor_now);
         
-        
+        esp_err_t err = ESP_OK;
         for (mqtt_config_list i = 0; i < MAX_CONFIG_HANDLE; i++)
         {
-            type_of_mqtt_data_t type_of_process_data = get_type_of_data (key_table[i]);
-            read_config_data_from_flash (&config_infor_now, type_of_process_data, i);
+            type_of_process_data = get_type_of_data (i);
+            err = read_config_data_from_flash (&config_infor_now, type_of_process_data, i);
+            if (err != ESP_OK)
+            {
+                make_key_to_store_type_in_nvs (string_key, i);
+                ESP_LOGI (TAG, "GOT ERR %d WHILE READING %s KEY", err, string_key);
+            }
         }
         send_current_config (config_infor_now);
         /*
@@ -709,13 +724,15 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
             for (mqtt_config_list i = 0; i < MAX_CONFIG_HANDLE; i++)
             {
                 process_json = NULL;
-                process_json = cJSON_GetObjectItemCaseSensitive (config, key_table[i]);
+                type_of_process_data = get_type_of_data (i);
+                make_key_from_mqtt_list_type (string_key, i);
+                process_json = cJSON_GetObjectItemCaseSensitive (config_json, string_key);
                 if (process_json == NULL)
                 {
                     // if not found string
                     continue;
                 }
-                type_of_mqtt_data_t type_of_process_data = get_type_of_data (key_table[i]);
+                
                 if (type_of_process_data == STRING_TYPE)
                 {
                     if (cJSON_IsString(process_json))
@@ -1181,7 +1198,7 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
         sensor_info.temperature = beacon_data_handle->teperature_value;
         sensor_info.smoke = beacon_data_handle->smoke_value;
         sensor_info.updateTime = app_time ();
-        ESP_LOGI (TAG, "Sensor data event")
+        ESP_LOGI (TAG, "Sensor data event");
         make_sensor_info_payload (sensor_info, (char *)mqtt_payload); 
         if (!(gsm_started && wifi_started && eth_started))
         {
@@ -1204,10 +1221,10 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
         break;
     case MIN_ID_NEW_SENSOR_PAIRING:
         // luu vao flash de kiem soat
-        
         memcpy (payload_buffer, frame->payload, 256);
         char mac_key [64];
         beacon_pair_info_t* pair_info;
+        uint16_t unicast_addr;
         pair_info = (beacon_pair_info_t*) payload_buffer;
         {
             memcpy (node_data.device_mac, pair_info->device_mac, 6);
@@ -1215,8 +1232,18 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
             build_string_from_MAC (node_data.device_mac, mac_key);
             // write
             size_t len = sizeof (node_sensor_data_t);
-            find_and_write_into_mac_key_space(&node_data, &len, mac_key);
+            unicast_addr = find_and_write_into_mac_key_space(&node_data, &len, mac_key);
         }
+        node_sensor_data_t sensor_data_response;
+        memcpy (sensor_data_response.device_mac, pair_info->device_mac, 6);
+        sensor_data_response.device_type = pair_info->device_type;
+        sensor_data_response.unicast_add = unicast_addr;
+        //send data through min
+        min_msg_t min_pair_data_msg;
+        min_pair_data_msg.id = MIN_ID_NEW_SENSOR_PAIRING;
+        min_pair_data_msg.payload = &sensor_data_response;
+        min_pair_data_msg.len = sizeof (beacon_pair_info_t);
+        send_min_data (&min_pair_data_msg);
         break;
     default:
         break;
@@ -1537,7 +1564,6 @@ void app_main(void)
         .if_key = "eth",
         .if_desc = "net_eth_if",
         .route_prio = 3
-        
     };
     esp_netif_config_t cfg = {
         .base = &netif_eth_config,                 // use specific behaviour configuration

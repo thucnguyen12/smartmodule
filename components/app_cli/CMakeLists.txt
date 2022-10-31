@@ -3,4 +3,4 @@ set(srcs "app_cli.c"
 
 idf_component_register(SRCS "${srcs}"
                     INCLUDE_DIRS "."
-                    REQUIRES modem app_mqtt_protocol app_uart nvs_flash_app)
+                    REQUIRES modem app_mqtt_protocol app_uart nvs_flash_app json http_request)

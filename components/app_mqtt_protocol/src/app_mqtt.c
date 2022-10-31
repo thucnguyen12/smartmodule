@@ -100,9 +100,9 @@ void make_config_info_payload (info_config_t config, char * str_out)
     index += sprintf (str_out + index, "\"mqttPassword\":%s\r\n", config.mqtt_pass);
     index += sprintf (str_out + index, "\"chargingInterval\":%d\r\n", config.charg_interval);
     index += sprintf (str_out + index, "\"unchargeInterval \":%d\r\n", config.uncharg_interval);
-    index += snprintf (str_out + index, strlen("\"userPhoneNumber1 \":") + 12, "\"userPhoneNumber1 \":%s\r\n", config.userPhoneNumber1);
-    index += snprintf (str_out + index, strlen("\"userPhoneNumber2 \":") + 12, "\"userPhoneNumber2 \":%s\r\n",  config.userPhoneNumber2);
-    index += snprintf (str_out + index, strlen("\"userPhoneNumber3 \":") + 12, "\"userPhoneNumber3 \":%s\r\n", config.userPhoneNumber3);
+    index += snprintf (str_out + index, strlen("\"userPhoneNumber1 \":") + 14, "\"userPhoneNumber1 \":%s\r\n", config.userPhoneNumber1);
+    index += snprintf (str_out + index, strlen("\"userPhoneNumber2 \":") + 14, "\"userPhoneNumber2 \":%s\r\n",  config.userPhoneNumber2);
+    index += snprintf (str_out + index, strlen("\"userPhoneNumber3 \":") + 14, "\"userPhoneNumber3 \":%s\r\n", config.userPhoneNumber3);
     index += sprintf (str_out + index, "\"buzzerEnable \":%s\r\n", config.buzzerEnable ? "true" : "false");
     index += sprintf (str_out + index, "\"syncAlarm\":%s\r\n", config.syncAlarm ? "true" : "false");
     index += sprintf (str_out + index, "\"networkAddress\":%s\r\n", config.networkAddress);

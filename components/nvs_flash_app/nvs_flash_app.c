@@ -1,34 +1,71 @@
-#include "nvs_flash_app.h"
+
 #include "esp_log.h"
 #include "esp_err.h"
+#include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+#include "nvs_flash_app.h"
 static const char* TAG = "nvs_flash_app";
 static int32_t m_err_code = ESP_OK;
 
 
 
-type_of_mqtt_data_t get_type_of_data (char * key)
+
+char* key_table [MAX_CONFIG_HANDLE] = {
+    "topicHeader",
+    "mqttAddress",
+    "mqttUserName",
+    "mqttPassword",
+    "chargingInterval",
+    "unchargeInterval",
+    "userPhoneNumber1",
+    "userPhoneNumber2",
+    "userPhoneNumber3",
+    "buzzerEnable",
+    "syncAlarm",
+    "networkAddress",
+    "smokeSensorWakeupInterval",
+    "smokeSensorHeartbeatInterval",
+    "smokeSensorThresHole",
+    "tempSensorWakeupInterval",
+    "tempSensorHeartbeatInterval",
+    "tempThreshHold",
+    "httpDnsName",
+    "httpUsername",
+    "httpDnsPass", 
+    "httpDnsPort",
+    "wifiname",
+    "wifipass",
+    "wifiDisable",
+    "pingMainServer",
+    "pingBackupServer",
+    "inputActiveLevel"
+};
+
+type_of_mqtt_data_t get_type_of_data (mqtt_config_list mqtt_config_element)
 {
     type_of_mqtt_data_t type;
     
-    if (strstr (key, "buzzerEnable") || strstr (key, syncAlarm))
+    // if (strstr (key, "buzzerEnable") || strstr (key, "syncAlarm"))
+    if ((mqtt_config_element == BUZZ_EN) || (mqtt_config_element == SYNC_ALARM))
     {
         type = BOOL_TYPE;
     }
-    else if (strstr (key, "topicHeader")
-            || strstr (key, "mqttAddress") 
-            || strstr (key, "mqttUserName")
-            || strstr (key, "mqttPassword")
-            || strstr (key, "userPhoneNumber1")
-            || strstr (key, "userPhoneNumber2")
-            || strstr (key, "userPhoneNumber3")
-            || strstr (key, "httpDnsName")
-            || strstr (key, "httpDnsPass")
-            || strstr (key, "wifiname")
-            || strstr (key, "wifipass")
-            || strstr (key, "pingMainServer")
-            || strstr (key, "pingMainServer")
+    else if ((mqtt_config_element == TOPIC_HDR)
+            || (mqtt_config_element == MQTT_ADDR)
+            || (mqtt_config_element == MQTT_USER)
+            || (mqtt_config_element == MQTT_PW)
+            || (mqtt_config_element == NETWORK_ADDR)
+            || (mqtt_config_element == PHONE_NUM_1)
+            || (mqtt_config_element == PHONE_NUM_2)
+            || (mqtt_config_element == PHONE_NUM_3)
+            || (mqtt_config_element == DNS_NAME)
+            || (mqtt_config_element == DNS_USER)
+            || (mqtt_config_element == DNS_PASS)
+            || (mqtt_config_element == WIFI_NAME)
+            || (mqtt_config_element == WIFI_PASS)
+            || (mqtt_config_element == PING_MAIN_SERVER)
+            || (mqtt_config_element == PING_BACKUP_SERVER)
             )
     {
         type = STRING_TYPE;
@@ -94,7 +131,7 @@ uint16_t get_and_store_new_unicast_addr_now (void)
     return unicast_addr;
 }
 
-uint16_t find_and_write_into_mac_key_space (node_sensor_data_t* data_write, size_t *byte_write, char* mac)
+uint16_t find_and_write_into_mac_key_space (node_sensor_data_t* data_write, size_t *byte_write, char* mac_key)
 {
     nvs_handle_t my_handle;
     esp_err_t ret = ESP_OK;
@@ -105,7 +142,7 @@ uint16_t find_and_write_into_mac_key_space (node_sensor_data_t* data_write, size
     ret |= err; 
     if (err == ESP_OK) 
     {
-        err = nvs_get_blob (my_handle, mac, &data_sensor, byte_write);
+        err = nvs_get_blob (my_handle, mac_key, &data_sensor, byte_write);
         switch (err) {
         case ESP_OK:
             unicast_addr = data_sensor.unicast_add;
@@ -115,7 +152,7 @@ uint16_t find_and_write_into_mac_key_space (node_sensor_data_t* data_write, size
             ESP_LOGI(TAG,"The value is not initialized yet! Creat new unicast addr\n");
             unicast_addr = get_and_store_new_unicast_addr_now();
             data_write->unicast_add = unicast_addr;
-            nvs_set_blob (my_handle, mac, data_write, sizeof (node_sensor_data_t));
+            nvs_set_blob (my_handle, mac_key, data_write, sizeof (node_sensor_data_t));
             break;
         // case ESP_ERR_NVS_KEYS_NOT_INITIALIZED:
         //     ESP_LOGI("The value is not initialized yet!\n");
@@ -222,6 +259,7 @@ int32_t internal_flash_nvs_write_string(char *key, char *value)
         ESP_LOGI(TAG, "Writing key %s, value %s to NVS", key, value);
 
         err = nvs_set_str(nvs_handle, key, value);
+        ESP_LOGI(TAG, "error: %d", err);
         ESP_LOGI(TAG, "%s", (err != ESP_OK) ? "Failed!" : "Done");
         ret |= err;
     
@@ -434,137 +472,376 @@ int32_t internal_flash_nvs_get_u8(char *key, uint8_t *value)
     return err;
 }
 
-void read_config_data_from_flash (info_config_t* config, type_of_mqtt_data_t data_type, mqtt_config_list mqtt_config_list)
+uint32_t read_config_data_from_flash (info_config_t* config, type_of_mqtt_data_t data_type, mqtt_config_list mqtt_config_list)
 {
+    esp_err_t err = ESP_OK;
     switch (data_type)
     {
     case STRING_TYPE:
         /* code */
         if (mqtt_config_list == TOPIC_HDR)
             {
-                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->topic_hr) ,sizeof (config->topic_hr));
+                err = internal_flash_nvs_read_string (INTERNAL_FLASH_NVS_KEY_TOPIC_HEADER, (config->topic_hr) ,sizeof (config->topic_hr));
                 // memcpy (config_infor_now.topic_hr, string_value, strlen ((char*)string_value));
             }
             else if (mqtt_config_list == MQTT_ADDR)
             {
-                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->mqtt_add) ,sizeof (config->mqtt_add));
+                err = internal_flash_nvs_read_string (INTERNAL_FLASH_NVS_KEY_MQTT_ADDR, (config->mqtt_add) ,sizeof (config->mqtt_add));
                 // memcpy (config_infor_now.mqtt_add, string_value, strlen ((char*)string_value));
             }
             else if (mqtt_config_list == MQTT_USER)
             {
-                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->mqtt_user) ,sizeof (config->mqtt_user));
+                err = internal_flash_nvs_read_string (INTERNAL_FLASH_NVS_KEY_MQTT_USERNAME, (config->mqtt_user) ,sizeof (config->mqtt_user));
                 // memcpy (config_infor_now.mqtt_pass, string_value, strlen ((char*)string_value));
             }
             else if (mqtt_config_list == MQTT_PW)
             {
-                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->mqtt_pass) ,sizeof (config->mqtt_pass));
+                err = internal_flash_nvs_read_string (INTERNAL_FLASH_NVS_KEY_MQTT_PASSWORD, (config->mqtt_pass) ,sizeof (config->mqtt_pass));
                 // memcpy (config_infor_now.mqtt_pass, string_value, strlen ((char*)string_value));
             }
             else if (mqtt_config_list == PHONE_NUM_1)
             {
-                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->userPhoneNumber1) ,sizeof (config->userPhoneNumber1));
+                err = internal_flash_nvs_read_string (INTERNAL_FLASH_NVS_KEY_PHONE_1, (config->userPhoneNumber1) ,sizeof (config->userPhoneNumber1));
                 // memcpy (config_infor_now.userPhoneNumber1, string_value, strlen ((char*)string_value));
             }
             else if (mqtt_config_list == PHONE_NUM_2)
             {
-                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->userPhoneNumber2) ,sizeof (config->userPhoneNumber2));
+                err = internal_flash_nvs_read_string (INTERNAL_FLASH_NVS_KEY_PHONE_2, (config->userPhoneNumber2) ,sizeof (config->userPhoneNumber2));
                 // memcpy (config_infor_now.userPhoneNumber2, string_value, strlen ((char*)string_value));
             }
             else if (mqtt_config_list == PHONE_NUM_3)
             {
-                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->userPhoneNumber3) ,sizeof (config->userPhoneNumber3));
+                err = internal_flash_nvs_read_string (INTERNAL_FLASH_NVS_KEY_PHONE_3, (config->userPhoneNumber3) ,sizeof (config->userPhoneNumber3));
+                // memcpy (config_infor_now.userPhoneNumber3, string_value, strlen ((char*)string_value));
+            }
+            else if (mqtt_config_list == NETWORK_ADDR)
+            {
+                err = internal_flash_nvs_read_string (INTERNAL_FLASH_NVS_KEY_NETWORK_ADDR, (config->userPhoneNumber3) ,sizeof (config->userPhoneNumber3));
                 // memcpy (config_infor_now.userPhoneNumber3, string_value, strlen ((char*)string_value));
             }
             else if (mqtt_config_list == DNS_NAME)
             {
-                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->httpDnsName) ,sizeof (config->httpDnsName));
+                err = internal_flash_nvs_read_string (INTERNAL_FLASH_NVS_KEY_DNS_NAME, (config->httpDnsName) ,sizeof (config->httpDnsName));
                 // memcpy (config_infor_now.httpDnsName, string_value, strlen ((char*)string_value));
             }
             else if (mqtt_config_list == DNS_USER)
             {
-                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->httpUsername) ,sizeof (config->httpUsername));
+                err = internal_flash_nvs_read_string (INTERNAL_FLASH_NVS_KEY_DNS_USER, (config->httpUsername) ,sizeof (config->httpUsername));
                 // memcpy (config_infor_now.httpUsername, string_value, strlen ((char*)string_value));
             }
             else if (mqtt_config_list == DNS_PASS)
             {
-                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->httpDnsPass) ,sizeof (config->httpDnsPass));
+                err = internal_flash_nvs_read_string (INTERNAL_FLASH_NVS_KEY_DNS_PASS, (config->httpDnsPass) ,sizeof (config->httpDnsPass));
                 // memcpy (config_infor_now.httpUsername, string_value, strlen ((char*)string_value));
             }
             else if (mqtt_config_list == WIFI_NAME)
             {
-                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->wifiname) ,sizeof (config->wifiname));
+                err = internal_flash_nvs_read_string (INTERNAL_FLASH_NVS_KEY_WIFI_NAME, (config->wifiname) ,sizeof (config->wifiname));
                 // memcpy (config_infor_now.httpUsername, string_value, strlen ((char*)string_value));
             }
             else if (mqtt_config_list == WIFI_PASS)
             {
-                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->wifipass) ,sizeof (config->wifipass));
+                err = internal_flash_nvs_read_string (INTERNAL_FLASH_NVS_KEY_WIFI_PASS, (config->wifipass) ,sizeof (config->wifipass));
                 // memcpy (config_infor_now.wifipass, string_value, strlen ((char*)string_value));
             }
             else if (mqtt_config_list == PING_MAIN_SERVER)
             {
-                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->pingMainServer) ,sizeof (config->pingMainServer));
+                err = internal_flash_nvs_read_string (INTERNAL_FLASH_NVS_KEY_PING_MAIN_SERVER, (config->pingMainServer) ,sizeof (config->pingMainServer));
                 // memcpy (config_infor_now.pingMainServer, string_value, strlen ((char*)string_value));
             }
             else if (mqtt_config_list == PING_BACKUP_SERVER)
             {
-                internal_flash_nvs_read_string (key_table[mqtt_config_list], (config->pingBackupServer) ,sizeof (config->pingBackupServer));
+                err = internal_flash_nvs_read_string (INTERNAL_FLASH_NVS_KEY_PING_BACKUP_SERVER, (config->pingBackupServer) ,sizeof (config->pingBackupServer));
                 // memcpy (config_infor_now.pingBackupServer, string_value, strlen ((char*)string_value));
             }
         break;
     case INT_TYPE:
         if (mqtt_config_list == CHARG_INTERVAL)
         {
-            internal_flash_nvs_get_u16(key_table[mqtt_config_list], &(config->charg_interval));
+            err = internal_flash_nvs_get_u16(INTERNAL_FLASH_NVS_KEY_CHARG_INTERVAL, (uint16_t*)&(config->charg_interval));
             // config_infor_now.charg_interval = int_value;
         }
         else if (mqtt_config_list == UNCHARG_INTERVAL)
         {
-            internal_flash_nvs_get_u16(key_table[mqtt_config_list], &(config->uncharg_interval));
+            err = internal_flash_nvs_get_u16(INTERNAL_FLASH_NVS_KEY_UNCHARG_INTERVAL, (uint16_t*)&(config->uncharg_interval));
             // config_infor_now.uncharg_interval = int_value;
         } 
         else if (mqtt_config_list == SMOKE_WAKE)
         {
-            internal_flash_nvs_get_u16(key_table[mqtt_config_list], &(config->smokeSensorWakeupInterval));
+            err = internal_flash_nvs_get_u16(INTERNAL_FLASH_NVS_KEY_SMOKE_WAKE, (uint16_t*)&(config->smokeSensorWakeupInterval));
             // config_infor_now.smokeSensorWakeupInterval = int_value;
         } 
         else if (mqtt_config_list == SMOKE_HEARTBEAT)
         {
-            internal_flash_nvs_get_u16(key_table[mqtt_config_list], &(config->smokeSensorHeartbeatInterval));
+            err = internal_flash_nvs_get_u16(INTERNAL_FLASH_NVS_KEY_SMOKE_HEARTBEAT, (uint16_t*)&(config->smokeSensorHeartbeatInterval));
             // config_infor_now.smokeSensorHeartbeatInterval = int_value;
         }
         else if (mqtt_config_list == SMOKE_THRESH)
         {
-            internal_flash_nvs_get_u16(key_table[mqtt_config_list], &(config->smokeSensorThresHole));
+            err = internal_flash_nvs_get_u16(INTERNAL_FLASH_NVS_KEY_SMOKE_THRESH, (uint16_t*)&(config->smokeSensorThresHole));
             // config_infor_now.smokeSensorThresHole = int_value;
         }
         else if (mqtt_config_list == TEMPER_WAKE)
         {
-            internal_flash_nvs_get_u16(key_table[mqtt_config_list], &(config->tempSensorWakeupInterval));
+            err = internal_flash_nvs_get_u16(INTERNAL_FLASH_NVS_KEY_TEMP_WAKE, (uint16_t*)&(config->tempSensorWakeupInterval));
             // config_infor_now.tempSensorWakeupInterval = int_value;
         }
         else if (mqtt_config_list == TEMPER_HEARTBEAT)
         {
-            internal_flash_nvs_get_u16(key_table[mqtt_config_list], &(config->tempSensorHeartbeatInterval));
+            err = internal_flash_nvs_get_u16(INTERNAL_FLASH_NVS_KEY_TEMP_HEARTBEAT, (uint16_t*)&(config->tempSensorHeartbeatInterval));
             // config_infor_now.tempSensorHeartbeatInterval = int_value;
         }
         else if (mqtt_config_list == TEMPER_THRESH)
         {
-            internal_flash_nvs_get_u16(key_table[mqtt_config_list], &(config->tempSensorHeartbeatInterval));
+            err = internal_flash_nvs_get_u16(INTERNAL_FLASH_NVS_KEY_TEMP_THRESH, (uint16_t*)&(config->tempSensorHeartbeatInterval));
             // config_infor_now.tempThresHold = int_value;
         }
         break;
     case BOOL_TYPE:
         if (mqtt_config_list == SYNC_ALARM)
         {
-            internal_flash_nvs_get_u8 (key_table[mqtt_config_list],  &(config->syncAlarm));
+            err = internal_flash_nvs_get_u8 (INTERNAL_FLASH_NVS_KEY_SYNC_ALARM,  (uint8_t *)&(config->syncAlarm));
         }
         else if (mqtt_config_list == BUZZ_EN)
         {
-            internal_flash_nvs_get_u8 (key_table[mqtt_config_list],  &(config->buzzerEnable));
+            err = internal_flash_nvs_get_u8 (INTERNAL_FLASH_NVS_KEY_BUZZ_EN,  (uint8_t *)&(config->buzzerEnable));
         }
         break;
     default:
         break;
     }
+    return err;
 }
 
+void make_key_from_mqtt_list_type (char* str_out, mqtt_config_list mqtt_config_element)
+{
+    if (mqtt_config_element == TOPIC_HDR)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_TOPIC_HEADER);
+    }
+    else if (mqtt_config_element == MQTT_ADDR)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_MQTT_ADDR);
+    }
+    else if (mqtt_config_element == MQTT_USER)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_MQTT_USERNAME);
+    }
+    else if (mqtt_config_element == MQTT_PW)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_MQTT_PASSWORD);
+    }
+    else if (mqtt_config_element == CHARG_INTERVAL)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_CHARG_INTERVAL);
+    }
+    else if (mqtt_config_element == UNCHARG_INTERVAL)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_UNCHARG_INTERVAL);
+    }
+    else if (mqtt_config_element == PHONE_NUM_1)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_PHONE_1);
+    }
+    else if (mqtt_config_element == PHONE_NUM_2)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_PHONE_2);
+    }
+    else if (mqtt_config_element == PHONE_NUM_3)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_PHONE_3);
+    }
+    else if (mqtt_config_element == BUZZ_EN)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_BUZZ_EN);
+    }
+    else if (mqtt_config_element == SYNC_ALARM)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_SYNC_ALARM);
+    }
+    else if (mqtt_config_element == NETWORK_ADDR)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_NETWORK_ADDR);
+    }
+    else if (mqtt_config_element == SMOKE_WAKE)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_SMOKE_WAKE);
+    }
+    else if (mqtt_config_element == SMOKE_HEARTBEAT)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_SMOKE_HEARTBEAT);
+    }
+    else if (mqtt_config_element == SMOKE_THRESH)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_SMOKE_THRESH);
+    }
+    else if (mqtt_config_element == TEMPER_WAKE)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_TEMP_WAKE);
+    }
+    else if (mqtt_config_element == TEMPER_HEARTBEAT)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_TEMP_HEARTBEAT);
+    }
+    else if (mqtt_config_element == TEMPER_THRESH)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_TEMP_THRESH);
+    }
+    else if (mqtt_config_element == DNS_NAME)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_DNS_NAME);
+    }
+    else if (mqtt_config_element == DNS_USER)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_DNS_USER);
+    }
+    else if (mqtt_config_element == DNS_PASS)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_DNS_PASS);
+    }
+    else if (mqtt_config_element == DNS_PORT)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_DNS_PORT);
+    }
+    else if (mqtt_config_element == WIFI_NAME)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_WIFI_NAME);
+    }
+    else if (mqtt_config_element == WIFI_PASS)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_WIFI_PASS);
+    }
+    else if (mqtt_config_element == WIFI_DIS)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_WIFI_DIS);
+    }
+    else if (mqtt_config_element == PING_MAIN_SERVER)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_PING_MAIN_SERVER);
+    }
+    else if (mqtt_config_element == PING_BACKUP_SERVER)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_PING_BACKUP_SERVER);
+    }
+    else if (mqtt_config_element == INPUT_LEVEL)
+    {
+        sprintf (str_out,  MQTT_SEVER_KEY_INPUT_ACTIVE_LEVEL);
+    }
+    return;
+}
+void make_key_to_store_type_in_nvs (char* str_out, mqtt_config_list mqtt_config_element)
+{
+    if (mqtt_config_element == TOPIC_HDR)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_TOPIC_HEADER);
+    }
+    else if (mqtt_config_element == MQTT_ADDR)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_MQTT_ADDR);
+    }
+    else if (mqtt_config_element == MQTT_USER)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_MQTT_USERNAME);
+    }
+    else if (mqtt_config_element == MQTT_PW)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_MQTT_PASSWORD);
+    }
+    else if (mqtt_config_element == CHARG_INTERVAL)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_CHARG_INTERVAL);
+    }
+    else if (mqtt_config_element == UNCHARG_INTERVAL)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_UNCHARG_INTERVAL);
+    }
+    else if (mqtt_config_element == PHONE_NUM_1)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_PHONE_1);
+    }
+    else if (mqtt_config_element == PHONE_NUM_2)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_PHONE_2);
+    }
+    else if (mqtt_config_element == PHONE_NUM_3)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_PHONE_3);
+    }
+    else if (mqtt_config_element == BUZZ_EN)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_BUZZ_EN);
+    }
+    else if (mqtt_config_element == SYNC_ALARM)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_SYNC_ALARM);
+    }
+    else if (mqtt_config_element == NETWORK_ADDR)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_NETWORK_ADDR);
+    }
+    else if (mqtt_config_element == SMOKE_WAKE)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_SMOKE_WAKE);
+    }
+    else if (mqtt_config_element == SMOKE_HEARTBEAT)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_SMOKE_HEARTBEAT);
+    }
+    else if (mqtt_config_element == SMOKE_THRESH)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_SMOKE_THRESH);
+    }
+    else if (mqtt_config_element == TEMPER_WAKE)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_TEMP_WAKE);
+    }
+    else if (mqtt_config_element == TEMPER_HEARTBEAT)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_TEMP_HEARTBEAT);
+    }
+    else if (mqtt_config_element == TEMPER_THRESH)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_TEMP_THRESH);
+    }
+    else if (mqtt_config_element == DNS_NAME)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_DNS_NAME);
+    }
+    else if (mqtt_config_element == DNS_USER)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_DNS_USER);
+    }
+    else if (mqtt_config_element == DNS_PASS)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_DNS_PASS);
+    }
+    else if (mqtt_config_element == DNS_PORT)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_DNS_PORT);
+    }
+    else if (mqtt_config_element == WIFI_NAME)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_WIFI_NAME);
+    }
+    else if (mqtt_config_element == WIFI_PASS)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_WIFI_PASS);
+    }
+    else if (mqtt_config_element == WIFI_DIS)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_WIFI_DIS);
+    }
+    else if (mqtt_config_element == PING_MAIN_SERVER)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_PING_MAIN_SERVER);
+    }
+    else if (mqtt_config_element == PING_BACKUP_SERVER)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_PING_BACKUP_SERVER);
+    }
+    else if (mqtt_config_element == INPUT_LEVEL)
+    {
+        sprintf (str_out,  INTERNAL_FLASH_NVS_KEY_INPUT_ACTIVE_LEVEL);
+    }
+    return;
+}
