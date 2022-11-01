@@ -103,7 +103,7 @@ void write_data_into_key_space (char * str_config)
 
 void build_string_from_MAC (uint8_t* device_mac, char * out_string)
 {
-    sprintf(out_string, "%02x:%02x:%02x:%02x:%02x:%02x", device_mac[0],
+    sprintf(out_string, "%02x%02x%02x%02x%02x%02x", device_mac[0],
                                                         device_mac[1],
                                                         device_mac[2],
                                                         device_mac[3],
@@ -111,22 +111,31 @@ void build_string_from_MAC (uint8_t* device_mac, char * out_string)
                                                         device_mac[5]);
 }
 
-#define UNICAST_ADD_STORE_KEY "unicast_addr_key"
+#define UNICAST_ADD_STORE_KEY "u_addr_key"
 #define UNICAST_ADDR_BASE 0X1000
 
 
 
 uint16_t get_and_store_new_unicast_addr_now (void)
 {
-    uint16_t unicast_addr = UNICAST_ADDR_BASE;
-    if (ESP_OK != internal_flash_nvs_get_u16(UNICAST_ADD_STORE_KEY, &unicast_addr))
+    uint16_t unicast_addr = 0;
+    esp_err_t err = internal_flash_nvs_get_u16(UNICAST_ADD_STORE_KEY, &unicast_addr);
+    if (err == ESP_ERR_NVS_NOT_FOUND)
     {
-        internal_flash_nvs_write_u16 (UNICAST_ADD_STORE_KEY, UNICAST_ADDR_BASE);
+        ESP_LOGI (TAG, "CREAT BASE ADDR");
+        unicast_addr = UNICAST_ADDR_BASE;
+        internal_flash_nvs_write_u16 (UNICAST_ADD_STORE_KEY, unicast_addr); 
+
+    }
+    else if (err == ESP_OK)
+    {
+        ESP_LOGI (TAG, "GET UNCAST ADDR AND INCREASE IT");
+        unicast_addr += 4;//dinh nghia lai ve khoang cach danh dia chi
+        internal_flash_nvs_write_u16 (UNICAST_ADD_STORE_KEY, unicast_addr);
     }
     else
     {
-        unicast_addr += 4;//dinh nghia lai ve khoang cach danh dia chi
-        internal_flash_nvs_write_u16 (UNICAST_ADD_STORE_KEY, unicast_addr);
+        ESP_LOGE (TAG, "GET UNICAST ADDR GOT ERR: %s", esp_err_to_name(err));
     }
     return unicast_addr;
 }
@@ -151,14 +160,23 @@ uint16_t find_and_write_into_mac_key_space (node_sensor_data_t* data_write, size
         case ESP_ERR_NVS_NOT_FOUND:
             ESP_LOGI(TAG,"The value is not initialized yet! Creat new unicast addr\n");
             unicast_addr = get_and_store_new_unicast_addr_now();
-            data_write->unicast_add = unicast_addr;
-            nvs_set_blob (my_handle, mac_key, data_write, sizeof (node_sensor_data_t));
+            if (unicast_addr)
+            {
+                data_write->unicast_add = unicast_addr;
+                err = nvs_set_blob (my_handle, mac_key, data_write, sizeof (node_sensor_data_t));
+                ESP_LOGI (TAG, "err write blob :%s", esp_err_to_name (err));
+            }
+            else
+            {
+                ESP_LOGE (TAG, "reading unicast addr err");
+            }
             break;
         // case ESP_ERR_NVS_KEYS_NOT_INITIALIZED:
         //     ESP_LOGI("The value is not initialized yet!\n");
         //     break;
         default :
             ESP_LOGI(TAG, "Error (%s) reading!\n", esp_err_to_name(err));
+            break;
         }
         nvs_close(my_handle);
     }

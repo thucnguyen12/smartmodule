@@ -377,8 +377,34 @@ static int32_t read_data_from_flash_test (p_shell_context_t context, int32_t arg
 
 static int32_t set_unicast_addr (p_shell_context_t context, int32_t argc, char **argv)
 {
-    // static char mac_key [64];
-    // beacon_pair_info_t* pair_info;
-    // uint16_t unicast_addr;
+    static char mac_key [64];
+    beacon_pair_info_t pair_info = {
+        .device_mac = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
+        .device_type = 1,
+        .pair_success = false
+    };
+    uint16_t unicast_addr;
+    node_sensor_data_t node_data;
+    memcpy (node_data.device_mac, pair_info.device_mac, 6);
+    node_data.device_type = pair_info.device_type;
+    build_string_from_MAC (node_data.device_mac, mac_key);
+    ESP_LOGI (TAG, "mac string: %s", mac_key);
+    // write
+    size_t len = sizeof (node_sensor_data_t);
+    unicast_addr = find_and_write_into_mac_key_space(&node_data, &len, mac_key);
+
+    node_sensor_data_t sensor_data_response;
+    memcpy (sensor_data_response.device_mac, pair_info.device_mac, 6);
+    sensor_data_response.device_type = pair_info.device_type;
+    sensor_data_response.unicast_add = unicast_addr;
+    // printf du lieu doc ra
+    ESP_LOGI (TAG, "MAC: %02x:%02x:%02x:%02x:%02x:%02x", sensor_data_response.device_mac[0],
+                                                        sensor_data_response.device_mac[1],
+                                                        sensor_data_response.device_mac[2],
+                                                        sensor_data_response.device_mac[3],
+                                                        sensor_data_response.device_mac[4],
+                                                        sensor_data_response.device_mac[5]);
+    ESP_LOGI (TAG, "DEVICE TYPE: %d", sensor_data_response.device_type);
+    ESP_LOGI (TAG, "UNICAST ADDR: %04x", sensor_data_response.unicast_add);
     return 0;
 }
