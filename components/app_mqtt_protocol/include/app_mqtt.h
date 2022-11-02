@@ -179,7 +179,7 @@ typedef struct
     uint32_t iv_index;
     uint32_t sequence_number;
     uint8_t mac[6];
-}__attribute((packed)) ble_config_t;
+} ble_config_t;
 
 
 typedef struct 

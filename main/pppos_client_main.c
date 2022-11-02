@@ -158,7 +158,7 @@ extern char ota_url [128];
 // extern const uint8_t server_cert_pem_start[] asm("_binary_ca_cert_pem_start");
 // extern const uint8_t server_cert_pem_end[] asm("_binary_ca_cert_pem_end");
 // imei
-char GSM_IMEI [16] = "not init yet";
+char GSM_IMEI [16] = "0000000000000000";
 char SIM_IMEI [16];
 uint8_t csq;
 
@@ -792,7 +792,7 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
         {
             
             ble_info_t ble_config_info;
-            
+            ble_config_t ble_config;
             cJSON* netkey = NULL;
             cJSON* appkey = NULL;
             cJSON* iv_index = NULL;
@@ -807,6 +807,8 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
             {
                 ESP_LOGI(TAG,"netkey:\"%s\"\n", netkey->valuestring);
                 memcpy (ble_config_info.netkey, netkey->valuestring, strlen (netkey->valuestring));
+                memcpy (ble_config.netkey, netkey->valuestring, strlen (netkey->valuestring));
+                ble_config.config.name.config_netkey = 1;
             }
             appkey = cJSON_GetObjectItemCaseSensitive (ble_config_json, "appkey");
 
@@ -814,6 +816,8 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
             {
                 ESP_LOGI(TAG,"appkey:\"%s\"\n", appkey->valuestring);
                 memcpy (ble_config_info.appkey, netkey->valuestring, strlen (appkey->valuestring));
+                memcpy (ble_config.appkey, appkey->valuestring, strlen (appkey->valuestring));
+                ble_config.config.name.config_appkey = 1;
             }
            
             iv_index = cJSON_GetObjectItemCaseSensitive (ble_config_json, "iv_index");
@@ -821,6 +825,8 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
             {
                 ESP_LOGI(TAG,"iv_index:\"%d\"\n", iv_index->valueint);
                 ble_config_info.iv_index = iv_index->valueint;
+                ble_config.iv_index = iv_index->valueint;
+                ble_config.config.name.config_IVindex = 1;
             }
             
             sequence_number = cJSON_GetObjectItemCaseSensitive (ble_config_json, "sequence_number");
@@ -828,6 +834,8 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
             {
                 ESP_LOGI(TAG,"sequence_number:\"%d\"\n", sequence_number->valueint);
                 ble_config_info.sequence_number = sequence_number->valueint;
+                ble_config.sequence_number = sequence_number->valueint;
+                ble_config.config.name.config_seqnumber = 1;
             }
             if (ble_config_json != NULL)
             {
@@ -1516,7 +1524,7 @@ void app_main(void)
     {
         ESP_LOGI (TAG, "DTE INIT FAIL");
     }
-    while (1)
+    while (0)
     {
         if (m_cli_started == false)
         {
@@ -1545,7 +1553,7 @@ void app_main(void)
     if(dce == NULL)
     dce = ec2x_init (dte);
     xSemaphoreTake (GSM_Sem, 200000);
-    // GSM_IMEI[16]; store gsm imei
+    //GSM_IMEI[16]; //store gsm imei
     if(dce == NULL)
     {
         // INIT FAIL
@@ -1609,6 +1617,7 @@ void app_main(void)
                                            5000);
     if (bits & WIFI_CONNECTED_BIT)
     {
+        ESP_LOGI (TAG, "WIFI CONNECT");
         ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
                 CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
         wifi_started = true;
@@ -1626,7 +1635,7 @@ void app_main(void)
         wifi_started = false;
         ESP_LOGE(TAG, "UNEXPECTED EVENT");
     }
-    ESP_LOGI (TAG, "WIFI CONNECT");
+    
     if (wifi_started == false)
     {
         ESP_ERROR_CHECK(esp_eth_start (eth_handle)); //start ethenet 
@@ -1854,7 +1863,7 @@ void app_main(void)
         ESP_LOGI (TAG, "MQTT INIT");
         esp_mqtt_client_start(mqtt_client);
         //register topic
-        if (memcmp (GSM_IMEI, "not init yet", 16) != 0)
+        if (memcmp (GSM_IMEI, "0000000000000000", 16) != 0)
         {
             
             make_mqtt_topic_header (HEART_BEAT_HEADER, "smart_module", GSM_IMEI, heart_beat_topic_header);

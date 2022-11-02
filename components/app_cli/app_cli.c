@@ -105,11 +105,16 @@ void app_cli_start (app_cli_cb_t *callback)
 static int32_t send_mesh_key (p_shell_context_t context, int32_t argc, char **argv)
 {
     ble_config_t test_config;
-    test_config.config.value = 0xF0;
-    memcpy (test_config.appkey, argv[1], 16);
-    memcpy (test_config.netkey, argv[2], 16);
-    test_config.iv_index = gsm_utilities_get_number_from_string(0, *argv);
-    test_config.sequence_number = gsm_utilities_get_number_from_string(0, *argv);
+    test_config.config.value = 0x0F;
+    // memcpy (test_config.appkey, argv[1], 16);
+    // memcpy (test_config.netkey, argv[2], 16);
+    for (uint8_t i = 0; i < 16; i++)
+    {
+        test_config.appkey[i] = 0x03;
+        test_config.netkey[i] = 0x04;
+    }
+    test_config.iv_index = 0xFE;//gsm_utilities_get_number_from_string(0, *argv);
+    test_config.sequence_number = 0xFA;//gsm_utilities_get_number_from_string(0, *argv);
     // TODO:  send min packet
     min_msg_t test_config_msg;
     test_config_msg.id = MIN_ID_SEND_KEY_CONFIG;
@@ -288,7 +293,6 @@ static int32_t write_data_to_flash_test (p_shell_context_t context, int32_t argc
     
     static char* configJsonstr = "{\"topicHeader\": \"string_ex\"\r\n,\"mqttAddress\": \"string_ex\"\r\n,\"mqttUserName\": \"string_ex\"\r\n,\"mqttPassword\": \"string_ex\"\r\n,\"chargingInterval\": 100\r\n,\"unchargeInterval\": 100\r\n,\"userPhoneNumber1\": \"1234567890\"\r\n,\"userPhoneNumber2\": \"1234567890\"\r\n,\"userPhoneNumber3\": \"1213154245\"\r\n,\"buzzerEnable\": true\r\n,\"syncAlarm\": true\r\n,\"networkAddress\": \"string_ex\"\r\n,\"smokeSensorWakeupInterval\": 100\r\n,\"smokeSensorHeartbeatInterval\": 100\r\n,\"smokeSensorThresHole\": 100\r\n,\"tempSensorWakeupInterval\": 100\r\n,\"tempSensorHeartbeatInterval\": 100\r\n,\"tempThresHold\": 100\r\n,\"httpDnsName\":\"string_ex\"\r\n,\"httpUsername\":\"string_ex\"\r\n,\"httpDnsPass\":\"string_ex\"\r\n,\"httpDnsPort\":10\r\n,\"wifiname\":\"string_ex\"\r\n,\"wifipass\":\"string_ex\"\r\n,\"wifiDisable\":100\r\n,\"reset\":0\r\n,\"pingMainServer\":\"string_ex\"\r\n,\"pingBackupServer\":\"string_ex\"\r\n,\"inputActiveLevel\":1\r\n,\"zoneMinMv\":0\r\n,\"zoneMaxMv\":0\r\n,\"zoneDelay\":0\r\n}";
     
-
     config_json = NULL;
     // char* config = strstr (event->data, "{");
     config_json = parse_json (configJsonstr);

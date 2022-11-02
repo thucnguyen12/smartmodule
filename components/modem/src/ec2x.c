@@ -1645,7 +1645,7 @@ modem_dce_t *ec2x_init(modem_dte_t *dte)
     gsm_hw_ctrl_power_en(1);
 
 */
-    vTaskDelay(500 / portTICK_PERIOD_MS); //Waiting for Vbat stable 500ms
+    vTaskDelay(1000 / portTICK_PERIOD_MS); //Waiting for Vbat stable 500ms
 
     /* Turn On module by PowerKey */
     ESP_LOGI(TAG, "Turn on power key level 1, pin %d\r\n", CONFIG_CONFIG_GSM_POWER_KEY_PIN);
