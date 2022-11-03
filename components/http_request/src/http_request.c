@@ -126,7 +126,7 @@ void http_get_task(void *pvParameters)
                 queuebuf [index++] = recv_buf[i];
             }
         } while(r > 0);
-
+        putchar('\n');
         if (strstr (queuebuf, "200 OK") == NULL)
         {
            //vTaskDelay (2000/portTICK_RATE_MS);
@@ -137,7 +137,7 @@ void http_get_task(void *pvParameters)
         {
             ESP_LOGI (TAG, "STRSTR FOUND 200 STATUS CODE");    
         }
-        ESP_LOGD(TAG, "queue here: %s ", queuebuf);
+        ESP_LOGI(TAG, "queue here: %s ", queuebuf);
         char *test = strstr (queuebuf, "{");
         if (test)
         {

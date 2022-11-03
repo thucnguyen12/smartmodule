@@ -95,7 +95,7 @@
 
 #define DEFAULT_PROTOCOL WIFI_PROTOCOL
 
-#define EXAMPLE_PING_IP            "www.google.com"
+#define EXAMPLE_PING_IP           "www.google.com"
 #define BACKUP_PING_IP            "www.google.com"
 #define EXAMPLE_PING_COUNT         5
 #define EXAMPLE_PING_INTERVAL      1
@@ -354,6 +354,7 @@ static void cmd_ping_on_ping_success(esp_ping_handle_t hdl, void *args)
     esp_ping_get_profile(hdl, ESP_PING_PROF_TIMEGAP, &elapsed_time, sizeof(elapsed_time));
     printf("%d bytes from %s icmp_seq=%d ttl=%d time=%d ms\n",
     recv_len, inet_ntoa(target_addr.u_addr.ip4), seqno, ttl, elapsed_time);
+    vTaskDelay (2);
 }
 
 static void cmd_ping_on_ping_timeout(esp_ping_handle_t hdl, void *args)
@@ -1553,7 +1554,7 @@ void app_main(void)
     if(dce == NULL)
     dce = ec2x_init (dte);
     xSemaphoreTake (GSM_Sem, 200000);
-    //GSM_IMEI[16]; //store gsm imei
+    // GSM_IMEI[16]; store gsm imei
     if(dce == NULL)
     {
         // INIT FAIL
@@ -1566,13 +1567,8 @@ void app_main(void)
     
     //eth netif config
     esp_netif_ip_info_t ip_info;
-    esp_netif_inherent_config_t netif_eth_config = {
-        .flags = ESP_NETIF_FLAG_AUTOUP,
-        .ip_info = (esp_netif_ip_info_t*)&ip_info,
-        .if_key = "eth",
-        .if_desc = "net_eth_if",
-        .route_prio = 3
-    };
+    esp_netif_inherent_config_t netif_eth_config = ESP_NETIF_INHERENT_DEFAULT_ETH();
+    netif_eth_config.route_prio = 2;
     esp_netif_config_t cfg = {
         .base = &netif_eth_config,                 // use specific behaviour configuration
         .driver = NULL,
@@ -1614,7 +1610,7 @@ void app_main(void)
                                            WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
                                            pdFALSE,
                                            pdFALSE,
-                                           5000);
+                                           50000);
     if (bits & WIFI_CONNECTED_BIT)
     {
         ESP_LOGI (TAG, "WIFI CONNECT");
@@ -1644,7 +1640,8 @@ void app_main(void)
     }
 
     do_ping_cmd();//pinging to addr
-    ESP_ERROR_CHECK(esp_task_wdt_reset());
+
+    // ESP_ERROR_CHECK(esp_task_wdt_reset());
     //init testing applications
     EventBits_t uxBitsPing = xEventGroupWaitBits(s_wifi_event_group, WIFI_PING_TIMEOUT | WIFI_PING_SUCESS, pdTRUE, pdFALSE, portMAX_DELAY);
     if (uxBitsPing & WIFI_PING_TIMEOUT)
@@ -1662,7 +1659,7 @@ void app_main(void)
     }
     
     mqtt_info_struct mqtt_broker_str;
-    ESP_ERROR_CHECK(esp_task_wdt_reset());
+    // ESP_ERROR_CHECK(esp_task_wdt_reset());
     if (mqtt_server_ready == false)
     {
         // get mqtt server from http request
@@ -1711,7 +1708,7 @@ void app_main(void)
     {
         send_min_data ((min_msg_t*) &ping_min_msg);
         get_interface_status ();
-        ESP_ERROR_CHECK(esp_task_wdt_reset());
+        // ESP_ERROR_CHECK(esp_task_wdt_reset());
         ESP_LOGI(TAG, "PROTOCOL USE: %d ", protocol_using);
 
         // if (protocol_using != WIFI_PROTOCOL)
@@ -1764,50 +1761,16 @@ void app_main(void)
         switch (protocol_using)
         {
         case WIFI_PROTOCOL:
-            // if (wifi_started == false)
-            // {
-            //     ESP_LOGI (TAG, "BEGIN WIFI");
-            //     app_wifi_connect (wifi_name, wifi_pass);
-            //     ESP_LOGI (TAG, "WIFI CONNECT");
-            //     do_ping_cmd(); //pinging to addr 
-            //     EventBits_t uxBitsPing = xEventGroupWaitBits(s_wifi_event_group, WIFI_PING_TIMEOUT | WIFI_PING_SUCESS, pdTRUE, pdFALSE, portMAX_DELAY);
-            //     if (uxBitsPing & WIFI_PING_TIMEOUT)
-            //     {
-            //         ESP_LOGI (TAG, "PING TIMEOUT, RETRY WITH ETH");
-            //         change_protocol_using_to (ETHERNET_PROTOCOL);
-            //         continue;
-            //     }
-            //     else if (uxBitsPing & WIFI_PING_SUCESS)
-            //     {
-            //         ESP_LOGI (TAG, "PING OK");
-                    wifi_started = true;
-            //     }
-            //     else
-            //     {
-            //         ESP_LOGI (TAG, "PING UNEXPECTED EVENT");
-            //     }
-            // }
+            //wifi_started = true;
+            ESP_LOGI(TAG, "NOW USE WIFI");
             break;
         case ETHERNET_PROTOCOL:
-            // if (eth_started == false)
-            // {
-            //     ESP_ERROR_CHECK(esp_eth_start(eth_handle));
-            eth_started = true;
-            // }
+            //eth_started = true;
+            ESP_LOGI(TAG, "NOW USE ETHERNET");
         break;
         case GSM_4G_PROTOCOL:
-            gsm_started = true;
-            // dce = NULL;
-            // dce = ec2x_init (dte);
-
-            // if(dce == NULL)
-            // {
-            //     ESP_LOGE(TAG, "INT 4G FAIL");
-            //     //protocol_using = WIFI_PROTOCOL;
-            //     change_protocol_using_to (WIFI_PROTOCOL);
-            //     continue;
-            // }
-            // xEventGroupWaitBits(event_group, CONNECT_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
+            //gsm_started = true;
+            ESP_LOGI(TAG, "NOW USE GSM");
         break;
         default:
             eth_started = false;
@@ -1858,10 +1821,10 @@ void app_main(void)
             esp_mqtt_client_start(mqtt_client);
         }
         
-        // we modulized connect event
-        mqtt_client = esp_mqtt_client_init(&mqtt_config);
-        ESP_LOGI (TAG, "MQTT INIT");
-        esp_mqtt_client_start(mqtt_client);
+        // // we modulized connect event
+        // mqtt_client = esp_mqtt_client_init(&mqtt_config);
+        // ESP_LOGI (TAG, "MQTT INIT");
+        // esp_mqtt_client_start(mqtt_client);
         //register topic
         if (memcmp (GSM_IMEI, "0000000000000000", 16) != 0)
         {
@@ -1892,7 +1855,7 @@ void app_main(void)
         }
         while (1) //main process loop
         {
-            ESP_ERROR_CHECK(esp_task_wdt_reset());
+            // ESP_ERROR_CHECK(esp_task_wdt_reset());
             EventBits_t uxBits = xEventGroupWaitBits(event_group, MQTT_DIS_CONNECT_BIT, pdTRUE, pdTRUE, 5/ portTICK_RATE_MS); // piority check disconnected event
             if ( (uxBits & MQTT_DIS_CONNECT_BIT) == MQTT_DIS_CONNECT_BIT)
             {
@@ -1990,6 +1953,7 @@ void app_main(void)
                 lấy đc IMEI thiết bị check sim các kiểu
                 xử lí trường hợp server chết
             */
+           vTaskDelay (500/portTICK_RATE_MS);
         }
         //deinit after get out of loop to reinit in new loop
 

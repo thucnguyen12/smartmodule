@@ -1320,13 +1320,8 @@ static void gsm_manager_task(void *arg)
 							ESP_LOGI(TAG, "Start ppp\r\n");
 							// assert(ESP_OK == esp_modem_setup_ppp(ec2x_dce->parent.dte));
                             esp_netif_ip_info_t ip_info;
-                            esp_netif_inherent_config_t netif_gsm_config = {
-                                .flags = ESP_NETIF_FLAG_AUTOUP,
-                                .ip_info = (esp_netif_ip_info_t*)&ip_info,
-                                .if_key = "gsm",
-                                .if_desc = "net_gsm_if",
-                                .route_prio = 1
-                            };
+                            esp_netif_inherent_config_t netif_gsm_config = ESP_NETIF_INHERENT_DEFAULT_PPP();
+                            netif_gsm_config.route_prio = 3;
                             esp_netif_config_t cfg = {
                                 .base = &netif_gsm_config,// use specific behaviour configuration
                                 .driver = NULL,                 

@@ -27,7 +27,7 @@ static bool m_got_ip = false;
 EventGroupHandle_t s_wifi_event_group;
 static int s_retry_num = 0;
 static bool init_sta = false;
-esp_netif_t *wifi_netif = NULL;
+// esp_netif_t *wifi_netif = NULL;
 extern bool wifi_started;
 
 
@@ -67,18 +67,14 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 esp_netif_t* esp_netif_create_wifi_sta(void)
 {
     esp_netif_ip_info_t ip_info;
-    esp_netif_inherent_config_t netif_wifi_config = {
-        .flags = ESP_NETIF_FLAG_AUTOUP,
-        .ip_info = (esp_netif_ip_info_t*)&ip_info,
-        .if_key = "wifi",
-        .if_desc = "net_wifi_if",
-        .route_prio = 2
-    };
+    esp_netif_inherent_config_t netif_wifi_config = ESP_NETIF_INHERENT_DEFAULT_WIFI_STA();
+    netif_wifi_config.route_prio = 1;
     esp_netif_config_t cfg = {
         .base = &netif_wifi_config,                 // use specific behaviour configuration
+        .driver = NULL,
         .stack = ESP_NETIF_NETSTACK_DEFAULT_WIFI_STA, // use default WIFI-like network stack configuration
     };
-    wifi_netif = esp_netif_new(&cfg);
+    esp_netif_t *wifi_netif = esp_netif_new(&cfg);
     assert(wifi_netif);
     esp_netif_attach_wifi_station(wifi_netif);
     esp_wifi_set_default_wifi_sta_handlers();
@@ -97,7 +93,7 @@ void wifi_init_sta(char *ssid, char* password)
         ret = nvs_flash_init();
     }
 
-    ESP_ERROR_CHECK(esp_netif_init());
+    //ESP_ERROR_CHECK(esp_netif_init());
     
     // ESP_ERROR_CHECK(esp_event_loop_create_default());
     if (init_sta == false)

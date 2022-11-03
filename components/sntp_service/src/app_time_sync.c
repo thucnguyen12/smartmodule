@@ -69,7 +69,9 @@ static void obtain_time(void)
      * examples/protocols/README.md for more information about this function.
      */
     // ESP_ERROR_CHECK(example_connect());
-    
+	if (sntp_enabled() ) {
+	sntp_stop();
+	}
     initialize_sntp();
 
     // wait for time to be set
@@ -95,10 +97,10 @@ uint32_t app_time(void)
     static struct tm timeinfo = { 0 };
     static struct tm last_timeinfo = { 0 };
     date_time_t time_now_struct;
-    // if ((timeinfo.tm_hour - last_timeinfo.tm_hour) < 1)
-    // {
-    //     return 0;
-    // }
+    if ((timeinfo.tm_hour - last_timeinfo.tm_hour) < 1)
+    {
+        return 0;
+    }
     // need update time before get localtime
     time(&now);
     localtime_r(&now, &timeinfo);
@@ -106,12 +108,15 @@ uint32_t app_time(void)
 	{
         ESP_LOGI(TAG, "Time is not set yet. Connecting to WiFi and getting time over NTP.");
         obtain_time();
+		last_timeinfo = timeinfo;
         // update 'now' variable with current time
-        time(&now);
+        
     }
-    setenv("TZ", "Etc/GMT+7", 1);
-    tzset();
-    localtime_r(&now, &timeinfo);
+    // setenv("TZ", "Etc/GMT+7", 1);
+    // tzset();
+    time(&now);
+	localtime_r(&now, &timeinfo);
+	timeinfo.tm_hour += 7; //cong them 7
     // Need convert timeinfo to date_time_t then send it to gd32;
     time_now_struct.year = timeinfo.tm_year;
     time_now_struct.month = timeinfo.tm_mon;
@@ -123,7 +128,7 @@ uint32_t app_time(void)
 
     char strftime_buf[64];
     strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-    ESP_LOGI(TAG, "The current date/time in New York is: %s", strftime_buf);
+    ESP_LOGI(TAG, "The current date/time is: %s", strftime_buf);
     return timstamp;
 }
 
