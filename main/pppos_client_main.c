@@ -1262,7 +1262,7 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
 bool min_tx_byte(void *ctx, uint8_t byte)
 {
 	(void)ctx;
-	uart_write_bytes(UART_NUM_1, &byte, 1);
+	uart_write_bytes(UART_NUM_2, &byte, 1);
 	return true;
 }
 
@@ -1273,7 +1273,7 @@ void send_min_data(min_msg_t *min_msg)
     {
         ESP_LOGI (TAG, "send key config");    
     }
-    ESP_LOGI (TAG, "send min msg ID: %d", min_msg->id);
+    // ESP_LOGI (TAG, "send min msg ID: %d", min_msg->id);
 }
 
 void build_min_tx_data_for_spi(min_msg_t* min_msg, uint8_t* data_spi, uint8_t size)
@@ -1336,13 +1336,13 @@ void build_min_tx_data_for_spi(min_msg_t* min_msg, uint8_t* data_spi, uint8_t si
 // app cli function
 void cli_cdc_tx(uint8_t *buffer, uint32_t size)
 {
-	uart_write_bytes(UART_NUM_0 ,buffer, size);
+	uart_write_bytes(UART_NUM_1 ,buffer, size);
 }
 
 int cli_cdc_puts(const char *msg)
 {
 	uint32_t len = strlen(msg);
-    uart_write_bytes(UART_NUM_0 ,msg, len);
+    uart_write_bytes(UART_NUM_1 ,msg, len);
 	return len;
 }
 
@@ -1414,6 +1414,48 @@ static network_netif check_and_update_default_netif (void)
     return netif_now;
 }
 
+static void task_init_modem(void *arg)
+{
+    //    ESP_ERROR_CHECK(esp_netif_init());
+    //    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    //    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &on_ip_event, NULL));
+    //    ESP_ERROR_CHECK(esp_event_handler_register(NETIF_PPP_STATUS, ESP_EVENT_ANY_ID, &on_ppp_changed, NULL));
+
+    esp_modem_dte_config_t dte_config = ESP_MODEM_DTE_DEFAULT_CONFIG();
+    /* setup UART specific configuration based on kconfig options */
+
+    dte_config.tx_io_num = GPIO_TX0;
+    dte_config.rx_io_num = GPIO_RX0;
+    dte_config.rts_io_num = 0;
+    dte_config.cts_io_num = 0;
+    dte_config.rx_buffer_size = CONFIG_EXAMPLE_MODEM_UART_RX_BUFFER_SIZE;
+    dte_config.tx_buffer_size = CONFIG_EXAMPLE_MODEM_UART_TX_BUFFER_SIZE;
+    dte_config.event_queue_size = CONFIG_EXAMPLE_MODEM_UART_EVENT_QUEUE_SIZE;
+    dte_config.event_task_stack_size = 4096;
+    dte_config.event_task_priority = CONFIG_EXAMPLE_MODEM_UART_EVENT_TASK_PRIORITY;
+    dte_config.dte_buffer_size = CONFIG_EXAMPLE_MODEM_UART_RX_BUFFER_SIZE / 2;
+    
+    dte = esp_modem_dte_init(&dte_config);
+    if (dte == NULL)
+    {
+        ESP_LOGI (TAG, "DTE INIT FAIL");
+    }
+    dte = esp_modem_dte_init(&dte_config);
+    if (!dte)
+    {
+        ESP_LOGE(TAG, "Create moderm evt failed\r\n");
+    }
+    ESP_ERROR_CHECK(esp_modem_add_event_handler(dte, modem_event_handler, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &modem_event_handler, NULL));
+    //	ESP_ERROR_CHECK(esp_modem_set_event_handler(m_dte, modem_event_handler, ESP_MODEM_EVENT_UNKNOWN, NULL));
+    //  ESP_ERROR_CHECK(esp_modem_set_event_handler(m_dte, modem_event_handler, ESP_EVENT_ANY_ID, NULL));
+
+    dce = ec2x_init(dte);
+    vTaskDelete(NULL);
+}
+
+
+
 
 
 void app_main(void)
@@ -1442,10 +1484,11 @@ void app_main(void)
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .source_clk = UART_SCLK_APB,
         };
-    uart_driver_install(UART_NUM_1, BUF_SIZE * 2, BUF_SIZE * 2, 512, &uart1_queue, 0);
-    uart_param_config(UART_NUM_1, &uart_config);        
-    uart_set_pin(UART_NUM_1, GPIO_TX1, GPIO_RX1, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);//uart for connectivity from esp to gd
+    uart_driver_install(UART_NUM_2, BUF_SIZE * 2, BUF_SIZE * 2, 512, &uart1_queue, 0);
+    uart_param_config(UART_NUM_2, &uart_config);        
+    uart_set_pin(UART_NUM_2, GPIO_TX1, GPIO_RX1, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);//uart for connectivity from esp to gd
     // need one more uart for rs485
+    
     //ESP32 <==> 4G MODULE (in ec2x_init)
    
     lwrb_init (&data_uart_module_rb, uart_buffer, UART_RINGBUFF_SIZE); //init lwrb
@@ -1553,13 +1596,14 @@ void app_main(void)
     
     if(dce == NULL)
     dce = ec2x_init (dte);
-    xSemaphoreTake (GSM_Sem, 200000);
-    // GSM_IMEI[16]; store gsm imei
-    if(dce == NULL)
-    {
-        // INIT FAIL
-        protocol_using = WIFI_PROTOCOL;
-    }
+    // xSemaphoreTake (GSM_Sem, 20);
+    // xSemaphoreTake (GSM_Sem, 20000/portTICK_RATE_MS);
+    // // GSM_IMEI[16]; store gsm imei
+    // if(dce == NULL)
+    // {
+    //     // INIT FAIL
+    //     protocol_using = WIFI_PROTOCOL;
+    // }
     
     EventBits_t ubits;
 
@@ -1596,7 +1640,7 @@ void app_main(void)
     // end ethernet
 
     /* Register event handler */
-    if (dce != NULL)
+    if (dte != NULL)
     {
         ESP_ERROR_CHECK(esp_modem_set_event_handler(dte, modem_event_handler, ESP_EVENT_ANY_ID, NULL)); //FOR MODEM
     }
@@ -1710,37 +1754,6 @@ void app_main(void)
         get_interface_status ();
         // ESP_ERROR_CHECK(esp_task_wdt_reset());
         ESP_LOGI(TAG, "PROTOCOL USE: %d ", protocol_using);
-
-        // if (protocol_using != WIFI_PROTOCOL)
-        // {
-        //     app_wifi_connect (wifi_name, wifi_pass);
-        //     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
-        //                                    WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-        //                                    pdFALSE,
-        //                                    pdFALSE,
-        //                                    5000);
-        //     if (bits & WIFI_CONNECTED_BIT)
-        //     {
-        //         ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
-        //                 CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
-        //         wifi_started = true;
-        //         protocol_using = WIFI_PROTOCOL;
-        //     }
-        //     else if (bits & WIFI_FAIL_BIT)
-        //     {
-        //         ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
-        //                 CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
-        //         protocol_using = ETHERNET_PROTOCOL;
-        //     }
-        //     else
-        //     {
-        //         ESP_LOGE(TAG, "UNEXPECTED EVENT");
-        //     }
-        // }
-        // else if ((protocol_using != ETHERNET_PROTOCOL) && (protocol_using != WIFI_PROTOCOL))
-        // {
-        //     protocol_using = ETHERNET_PROTOCOL;
-        // }
         network_netif nn = check_and_update_default_netif ();
         if (nn == GSM_NETIF)
         {

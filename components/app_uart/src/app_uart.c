@@ -31,6 +31,7 @@
 static const char *TAG = "app_uart";
 QueueHandle_t uart1_queue;
 QueueHandle_t uart0_queue;
+QueueHandle_t uart2_queue;
 extern lwrb_t data_uart_module_rb;
 //static lwrb_t* data_uart_module_rb_ptr = &data_uart_module_rb;
 

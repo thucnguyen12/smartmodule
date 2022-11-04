@@ -210,7 +210,8 @@ static void gsm_manager_task(void *arg)
                     }
                 }
                 break;
-                 case 1:
+                case 1:
+                xSemaphoreGive(GSM_Sem);
                 err = esp_modem_dce_echo(&(esp_modem_dce->parent), false);
                 if (err == ESP_OK)
                 {

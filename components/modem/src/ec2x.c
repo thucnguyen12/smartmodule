@@ -39,7 +39,7 @@
 #define MODEM_MAX_ACCESS_TECH_STR_LEN   64
 #define MODEM_MAX_NETWORK_BAND_STR_LEN  64
 
-static bool timeout_with_4g_ec2x = false;
+// static bool timeout_with_4g_ec2x = false;
 esp_netif_t *gsm_esp_netif = NULL;
 
 /**
@@ -1005,12 +1005,14 @@ static void gsm_reset_module(void)
 static void gsm_manager_task(void *arg)
 {
     ESP_LOGI("EC2x", "\t\r\n--- gsm_manager_task is running ---\r\n");
+    // GSM_Sem = xSemaphoreCreateMutex();
     vTaskDelay(2000);
+
     esp_err_t err;
     uint8_t gsm_init_step = 0;
     bool gsm_init_done = false;
     uint8_t send_at_retry_nb = 0;
-    timeout_with_4g_ec2x = false;
+    // timeout_with_4g_ec2x = false;
 
     for (;;)
     {
@@ -1028,17 +1030,17 @@ static void gsm_manager_task(void *arg)
                 else
                 {
                     send_at_retry_nb++;
-                    if (send_at_retry_nb > 15)
+                    if (send_at_retry_nb > 20)
                     {
                         ESP_LOGE(TAG, "Modem not response AT command. Reset module...");
-                        timeout_with_4g_ec2x = true;
+                        // timeout_with_4g_ec2x = true;
                         send_at_retry_nb = 0;
                         gsm_reset_module();
-                        xSemaphoreGive(GSM_Sem);
                     }
                 }
                 break;
             case 1:
+                // xSemaphoreGive(GSM_Sem);
                 err = esp_modem_dce_echo(&(ec2x_dce->parent), false);
                 if (err == ESP_OK)
                 {
@@ -1651,14 +1653,14 @@ modem_dce_t *ec2x_init(modem_dte_t *dte)
 
     ESP_LOGI(TAG, "Start GSM manager task\r\n");
     xTaskCreate(gsm_manager_task, "gsm_manager_task", 4 * 1024, NULL, 5, NULL);
-    xSemaphoreTake (GSM_Sem, 20000/ portTICK_PERIOD_MS);
+
     
 //    ESP_LOGI(TAG, "ec2x_init exit!");
-    xSemaphoreGive(GSM_Sem);
-    if (timeout_with_4g_ec2x)
-    {
-        goto err;
-    }
+    // xSemaphoreGive(GSM_Sem);
+    // if (timeout_with_4g_ec2x)
+    // {
+    //     goto err;
+    // }
 
     return &(ec2x_dce->parent);
 //err_io:
