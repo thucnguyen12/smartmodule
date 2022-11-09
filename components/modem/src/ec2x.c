@@ -990,7 +990,7 @@ static void gsm_reset_module(void)
 
     /* Turn On module by PowerKey */
     gsm_hw_ctrl_power_key(0);
-    vTaskDelay(500 / portTICK_PERIOD_MS);
+    vTaskDelay (500/portTICK_PERIOD_MS);
     gsm_hw_ctrl_power_key(1);
 }
 

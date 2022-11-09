@@ -968,6 +968,14 @@ void gsm_gpio_config (void)
     io_config.pull_down_en = 0;
     io_config.pull_up_en = 0;
     gpio_config (&io_config);
+    io_config.pin_bit_mask = GSM_RS485_SEL;
+    io_config.mode = GPIO_MODE_OUTPUT;
+    io_config.intr_type = GPIO_INTR_DISABLE;
+    io_config.pull_down_en = 0;
+    io_config.pull_up_en = 0;
+    gpio_config (&io_config);
+    gpio_set_level (GPIO_RS485_EN, 1);
+
 }
 
 void send_current_config (info_config_t config_infor_now)
@@ -1113,6 +1121,8 @@ uint32_t sys_get_ms(void)
 esp_err_t err;
 
 node_sensor_data_t node_data;
+min_msg_t min_pair_data_msg;
+
 
 void min_rx_callback(void *min_context, min_msg_t *frame)
 {
@@ -1176,19 +1186,21 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
             alarm_status.networkStatus.value &= ~(1 << 6);
         }
         make_fire_status_payload (alarm_status, (char *)mqtt_payload); // Bo truong temper va fireZone
+#warning " xem lai ve ban tin heartbeat ghi vao flash va day len server"        
         // sau khi co tao xong payload  thi kiem tra tinh trang ket noi mang va luu vao flash neu mat mang hoac ban len server sau khi co mang lai
-        if ((alarm_status.networkStatus.value >> 5) == 0) // khong co mang haoc so sanh truc tiep tai bien nay
-        {
-            ping_data_count_in_flash++;
-            sprintf (ping_data_key, NVS_DATA_PING, ping_data_count_in_flash);
-            // err = write_data_to_flash (mqtt_payload, strlen ((char *)mqtt_payload), ping_data_key);
-            err = internal_flash_nvs_write_string (ping_data_key, mqtt_payload);
-            ESP_LOGI (TAG, "Write heartbeat data to flash: %s", (err = ESP_OK) ? "Fail" : "OK");
-        }
-        else
-        {
-            esp_mqtt_client_publish(mqtt_client, heart_beat_topic_header, (char*)mqtt_payload, 0, 0, 0);
-        }
+        // if ((alarm_status.networkStatus.value >> 5) == 0) // khong co mang haoc so sanh truc tiep tai bien nay
+        // {
+        //     ping_data_count_in_flash++;
+        //     sprintf (ping_data_key, NVS_DATA_PING, ping_data_count_in_flash);
+        //     // err = write_data_to_flash (mqtt_payload, strlen ((char *)mqtt_payload), ping_data_key);
+        //     err = internal_flash_nvs_write_string (ping_data_key, mqtt_payload);
+        //     ESP_LOGI (TAG, "Write heartbeat data to flash: %s", (err = ESP_OK) ? "Fail" : "OK");
+        // }
+        // else
+        // {
+                if (mqtt_server_ready)
+                esp_mqtt_client_publish(mqtt_client, heart_beat_topic_header, (char*)mqtt_payload, 0, 0, 0);
+        // }
         break;
     case MIN_ID_SEND_AND_RECEIVE_BEACON_MSG:
 
@@ -1209,7 +1221,7 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
         sensor_info.updateTime = app_time ();
         ESP_LOGI (TAG, "Sensor data event");
         make_sensor_info_payload (sensor_info, (char *)mqtt_payload); 
-        if (!(gsm_started && wifi_started && eth_started))
+        if (0)//!(gsm_started && wifi_started && eth_started))
         {
             data_sensor_count_in_flash++;
             sprintf (data_sensor_key, NVS_DATA_SENSOR, data_sensor_count_in_flash);
@@ -1219,6 +1231,7 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
         }
         else 
         {
+            if (mqtt_server_ready)
             esp_mqtt_client_publish(mqtt_client, sensor_topic_header, (char*)mqtt_payload, 0, 0, 0);//only send when network is starteed
         }
         break;
@@ -1230,29 +1243,38 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
         break;
     case MIN_ID_NEW_SENSOR_PAIRING:
         // luu vao flash de kiem soat
-        memcpy (payload_buffer, frame->payload, 256);
+        ESP_LOGI (TAG, "NEW SENSOR PAIRING RECEIVE");
+        memcpy (payload_buffer, frame->payload, frame->len);
         char mac_key [64];
         beacon_pair_info_t* pair_info;
         uint16_t unicast_addr;
         pair_info = (beacon_pair_info_t*) payload_buffer;
         {
-            memcpy (node_data.device_mac, pair_info->device_mac, 6);
-            node_data.device_type = pair_info->device_type;
-            build_string_from_MAC (node_data.device_mac, mac_key);
-            // write
-            size_t len = sizeof (node_sensor_data_t);
-            unicast_addr = find_and_write_into_mac_key_space(&node_data, &len, mac_key);
+            if (pair_info->pair_success)
+            {
+                // memcpy (node_data.device_mac, pair_info->device_mac, 6);
+                // node_data.device_type = pair_info->device_type;
+                build_string_from_MAC (pair_info->device_mac, mac_key);
+                // write
+                
+                err = find_and_write_into_mac_key_space(&unicast_addr, mac_key);
+            }            
         }
-        node_sensor_data_t sensor_data_response;
-        memcpy (sensor_data_response.device_mac, pair_info->device_mac, 6);
-        sensor_data_response.device_type = pair_info->device_type;
-        sensor_data_response.unicast_add = unicast_addr;
+        ESP_LOGI (TAG, "MAC: %02x:%02x:%02x:%02x:%02x:%02x", pair_info->device_mac[0],
+                                                            pair_info->device_mac[1],
+                                                            pair_info->device_mac[2],
+                                                            pair_info->device_mac[3],
+                                                            pair_info->device_mac[4],
+                                                            pair_info->device_mac[5]);
+        ESP_LOGI (TAG, "DEVICE TYPE: %d", pair_info->device_type);
+        ESP_LOGI (TAG, "UNICAST ADDR: %04x", unicast_addr);
+
         //send data through min
-        min_msg_t min_pair_data_msg;
         min_pair_data_msg.id = MIN_ID_NEW_SENSOR_PAIRING;
-        min_pair_data_msg.payload = &sensor_data_response;
-        min_pair_data_msg.len = sizeof (beacon_pair_info_t);
+        min_pair_data_msg.payload = &unicast_addr;
+        min_pair_data_msg.len = sizeof (uint16_t);
         send_min_data (&min_pair_data_msg);
+
         break;
     default:
         break;
@@ -1273,7 +1295,7 @@ void send_min_data(min_msg_t *min_msg)
     {
         ESP_LOGI (TAG, "send key config");    
     }
-    // ESP_LOGI (TAG, "send min msg ID: %d", min_msg->id);
+    ESP_LOGI (TAG, "send min msg ID: %d", min_msg->id);
 }
 
 void build_min_tx_data_for_spi(min_msg_t* min_msg, uint8_t* data_spi, uint8_t size)
@@ -1518,7 +1540,7 @@ void app_main(void)
     GSM_Sem = xSemaphoreCreateMutex();
     mqtt_info_queue = xQueueCreate(1, sizeof(mqtt_info_struct));
     
-     xTaskCreate(uart_event_task, "uart_event_task", 2048, NULL, 12, NULL);
+     xTaskCreate(uart_event_task, "uart_event_task", 4096, NULL, 12, NULL);
     // after this we can test app cli
     
     
@@ -1570,21 +1592,22 @@ void app_main(void)
     }
     while (0)
     {
-        if (m_cli_started == false)
-        {
-            m_cli_started = true;
-            app_cli_start(&m_tcp_cli);
-            ESP_LOGI(TAG, "APP CLI STARTED \r\n");
-        }
-        uint8_t ch = '\0';
-        uart_read_bytes (UART_NUM_0, &ch, 1, 100);
-        if (ch)
-        {
-            app_cli_poll(ch);
-        }
+        // if (m_cli_started == false)
+        // {
+        //     m_cli_started = true;
+        //     app_cli_start(&m_tcp_cli);
+        //     ESP_LOGI(TAG, "APP CLI STARTED \r\n");
+        // }
+        // uint8_t ch = '\0';
+        // uart_read_bytes (UART_NUM_1, &ch, 1, 100);
+        // if (ch)
+        // {
+        //     app_cli_poll(ch);
+        // }
         // ESP_LOGI(TAG, "WAIT HERE TO TEST COMMAND LINE");
         // send_min_data ((min_msg_t*) &ping_min_msg);
-        vTaskDelay (1/portTICK_RATE_MS);
+        send_min_data ((min_msg_t*) &ping_min_msg);
+        vTaskDelay (2000/portTICK_RATE_MS);
     }
 /*  uncomment this if there are no need gsm_task
     // Init netif object

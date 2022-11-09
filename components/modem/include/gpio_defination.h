@@ -21,7 +21,9 @@ extern "C" {
 #define CONFIG_ETH_MDIO_GPIO 15
 #define GPIO_RS485_TX 14
 #define GPIO_RS485_RX 13
+#define GPIO_RS485_EN 33
 
+#define GSM_RS485_SEL (1ULL<<GPIO_NUM_33)
 
 #ifdef __cplusplus
 }

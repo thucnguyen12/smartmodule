@@ -140,35 +140,42 @@ uint16_t get_and_store_new_unicast_addr_now (void)
     return unicast_addr;
 }
 
-uint16_t find_and_write_into_mac_key_space (node_sensor_data_t* data_write, size_t *byte_write, char* mac_key)
+esp_err_t find_and_write_into_mac_key_space (uint16_t* unicast_addr, char* mac_key)
 {
     nvs_handle_t my_handle;
     esp_err_t ret = ESP_OK;
-    node_sensor_data_t data_sensor;
-    uint16_t unicast_addr = 0;
+    //node_sensor_data_t data_sensor;
+    uint16_t unicast_addr_temp = 0;
     //OPEN FLASH
     esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
     ret |= err; 
     if (err == ESP_OK) 
     {
-        err = nvs_get_blob (my_handle, mac_key, &data_sensor, byte_write);
+        //err = nvs_get_blob (my_handle, mac_key, &data_sensor, byte_write);
+        err = internal_flash_nvs_get_u16 (mac_key, unicast_addr);
         switch (err) {
         case ESP_OK:
-            unicast_addr = data_sensor.unicast_add;
+            //unicast_addr = data_sensor.unicast_add;
             ESP_LOGI(TAG,"Done\n");
             break;
         case ESP_ERR_NVS_NOT_FOUND:
             ESP_LOGI(TAG,"The value is not initialized yet! Creat new unicast addr\n");
-            unicast_addr = get_and_store_new_unicast_addr_now();
-            if (unicast_addr)
+            unicast_addr_temp = get_and_store_new_unicast_addr_now();
+
+            if (unicast_addr_temp)
             {
-                data_write->unicast_add = unicast_addr;
-                err = nvs_set_blob (my_handle, mac_key, data_write, sizeof (node_sensor_data_t));
-                ESP_LOGI (TAG, "err write blob :%s", esp_err_to_name (err));
+                // data_write->unicast_add = unicast_addr;
+                // err = nvs_set_blob (my_handle, mac_key, data_write, sizeof (node_sensor_data_t));
+
+                *unicast_addr = unicast_addr_temp;
+                err = internal_flash_nvs_write_u16 (mac_key, unicast_addr_temp);
+                ESP_LOGI (TAG, "err write uncast add :%s", esp_err_to_name (err));
+                err = internal_flash_nvs_get_u16 (mac_key, unicast_addr);
+                ESP_LOGI (TAG, "err get uncast add :%s", esp_err_to_name (err));
             }
             else
             {
-                ESP_LOGE (TAG, "reading unicast addr err");
+                ESP_LOGE (TAG, "get new unicast addr err");
             }
             break;
         // case ESP_ERR_NVS_KEYS_NOT_INITIALIZED:
@@ -184,7 +191,7 @@ uint16_t find_and_write_into_mac_key_space (node_sensor_data_t* data_write, size
     {
         ESP_LOGI(TAG, "Error (%s) opening NVS handle!\n", esp_err_to_name(err));
     }
-    return unicast_addr;
+    return err;
 }
 
 //******************************************* NVS PLACE *****************************///
