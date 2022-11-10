@@ -68,6 +68,7 @@ typedef struct
 } ec2x_modem_dce_t;
 
 ec2x_modem_dce_t *ec2x_dce = NULL;
+extern bool got_gsm_imei ;
 extern char GSM_IMEI[16];
 extern char SIM_IMEI [16];
 extern uint8_t csq;
@@ -1103,6 +1104,7 @@ static void gsm_manager_task(void *arg)
                 if (err == ESP_OK)
                 {
                     ESP_LOGI(TAG, "Get GSM IMEI: %s", ec2x_dce->parent.imei);
+                    got_gsm_imei = true;
                     memcpy (GSM_IMEI, (char*) (ec2x_dce->parent.imei), strlen (GSM_IMEI)); //copy IMEI
                     send_at_retry_nb = 0;
                     gsm_init_step++;
@@ -1373,7 +1375,7 @@ static void gsm_manager_task(void *arg)
                 break;
             }
         }
-        vTaskDelay(1000 / portTICK_RATE_MS);
+        vTaskDelay(1500 / portTICK_RATE_MS);
     }
 
     ESP_LOGI("EC2x", "\t\t\r\n--- gsm_manager_task is exit ---");
