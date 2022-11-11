@@ -87,6 +87,7 @@ esp_err_t esp_modem_setup_ppp(modem_dte_t *dte)
     esp_netif_ip_info_t ip_info;
     esp_netif_inherent_config_t netif_gsm_config = ESP_NETIF_INHERENT_DEFAULT_PPP();
     netif_gsm_config.route_prio = 3;
+    netif_gsm_config.if_desc = "netif_gsm";
     esp_netif_config_t cfg = {
         .base = &netif_gsm_config,// use specific behaviour configuration
         .driver = NULL,                 

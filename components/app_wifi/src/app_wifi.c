@@ -69,6 +69,7 @@ esp_netif_t* esp_netif_create_wifi_sta(void)
     esp_netif_ip_info_t ip_info;
     esp_netif_inherent_config_t netif_wifi_config = ESP_NETIF_INHERENT_DEFAULT_WIFI_STA();
     netif_wifi_config.route_prio = 1;
+    netif_wifi_config.if_desc = "netif_wifi";
     esp_netif_config_t cfg = {
         .base = &netif_wifi_config,                 // use specific behaviour configuration
         .driver = NULL,

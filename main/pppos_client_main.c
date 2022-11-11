@@ -919,7 +919,9 @@ static void eth_event_handler(void *arg, esp_event_base_t event_base,
         ESP_LOGI(TAG, "Ethernet HW Addr %02x:%02x:%02x:%02x:%02x:%02x",
                  mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
         break;
+        
     case ETHERNET_EVENT_DISCONNECTED:
+        eth_started = false;
         ESP_LOGI(TAG, "Ethernet Link Down");
         break;
     case ETHERNET_EVENT_START:
@@ -1205,7 +1207,7 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
         // }
         // else
         // {
-                if (mqtt_server_ready)
+                if (mqtt_server_ready && (gsm_started || wifi_started || eth_started))
                 esp_mqtt_client_publish(mqtt_client, heart_beat_topic_header, (char*)mqtt_payload, 0, 0, 0);
         // }
         break;
@@ -1408,11 +1410,12 @@ esp_err_t get_interface_status (void)
 {
     esp_netif_t *netif = NULL;
     esp_netif_ip_info_t ip;
-
-    ESP_LOGI (TAG, "NOW GET NET INTERFACE INFO");
-    for (int i = 0; i < esp_netif_get_nr_of_ifs(); ++i) {
+    static int netif_cnt = 0;
+    netif_cnt = esp_netif_get_nr_of_ifs();
+    ESP_LOGI (TAG, "NOW GET NET INTERFACE INFO: %d", netif_cnt);
+    for (int i = 0; i < netif_cnt; ++i) {
         netif = esp_netif_next(netif);
-        if (is_our_netif(TAG, netif)) {
+        if (is_our_netif ("netif_", netif)) {
             ESP_LOGI(TAG, "Now connected to %s", esp_netif_get_desc(netif));
             ESP_ERROR_CHECK(esp_netif_get_ip_info(netif, &ip));
             ESP_LOGI(TAG, "- IPv4 address: " IPSTR, IP2STR(&ip.ip));
@@ -1646,12 +1649,14 @@ void app_main(void)
     esp_netif_ip_info_t ip_info;
     esp_netif_inherent_config_t netif_eth_config = ESP_NETIF_INHERENT_DEFAULT_ETH();
     netif_eth_config.route_prio = 2;
+    netif_eth_config.if_desc = "netif_eth";
     esp_netif_config_t cfg = {
         .base = &netif_eth_config,                 // use specific behaviour configuration
         .driver = NULL,
         .stack = ESP_NETIF_NETSTACK_DEFAULT_ETH, // use default WIFI-like network stack configuration
     };
 
+    
     eth_netif = esp_netif_new(&cfg);
 
     // Init MAC and PHY configs to default
@@ -1991,15 +1996,15 @@ void app_main(void)
                 // if get time update send it to gd 32
                 // check network status
                 esp_status_infor.need_update_time = true;
-                if (wifi_started)
+                if (protocol_using == WIFI_PROTOCOL)
                 {
                     esp_status_infor.network_status = WIFI_CONNECT;
                 }
-                else if (eth_started)
+                else if (protocol_using == ETHERNET_PROTOCOL)
                 {
                     esp_status_infor.network_status = ETH_CONNECT;
                 }
-                else if (gsm_started)
+                else if (protocol_using == GSM_4G_PROTOCOL)
                 {
                     esp_status_infor.network_status = GSM_CONNECT;
                 }
@@ -2007,6 +2012,7 @@ void app_main(void)
                 {
                     esp_status_infor.network_status = NO_CONNECT;
                 }
+                ESP_LOGD (TAG, "network using now: %d",  esp_status_infor.network_status);
                 esp_status_infor.timestamp_count_by_second = timestamp_now;
                 syn_time_and_status_msg.id = MIN_ID_TIMESTAMP;
                 syn_time_and_status_msg.payload = &esp_status_infor;
@@ -2017,15 +2023,15 @@ void app_main(void)
             {
                 // no need send timestamp just network status
                 esp_status_infor.need_update_time = false;
-                if (wifi_started)
+                if (protocol_using == WIFI_PROTOCOL)
                 {
                     esp_status_infor.network_status = WIFI_CONNECT;
                 }
-                else if (eth_started)
+                else if (protocol_using == ETHERNET_PROTOCOL)
                 {
                     esp_status_infor.network_status = ETH_CONNECT;
                 }
-                else if (gsm_started)
+                else if (protocol_using == GSM_4G_PROTOCOL)
                 {
                     esp_status_infor.network_status = GSM_CONNECT;
                 }
@@ -2033,6 +2039,7 @@ void app_main(void)
                 {
                     esp_status_infor.network_status = NO_CONNECT;
                 }
+                ESP_LOGD (TAG, "network using now: %d",  esp_status_infor.network_status);
                 esp_status_infor.timestamp_count_by_second = 0;
                 syn_time_and_status_msg.id = MIN_ID_TIMESTAMP;
                 syn_time_and_status_msg.payload = &esp_status_infor;
@@ -2059,6 +2066,54 @@ void app_main(void)
                 last_tick_cnt = now;
                 
             }
+            static uint32_t last_time_check_network = 0; 
+            if ((now - last_time_check_network) > 800)
+            {
+                last_time_check_network = now;
+                get_interface_status ();
+                // ESP_ERROR_CHECK(esp_task_wdt_reset());
+                if (gsm_started)
+                {
+                    protocol_using = GSM_4G_PROTOCOL;
+                }
+                else if (eth_started)
+                {
+                    protocol_using = ETHERNET_PROTOCOL;
+                }
+                else if (wifi_started)
+                {
+                    protocol_using = WIFI_PROTOCOL;
+                }
+                else 
+                {
+                    protocol_using = PROTOCOL_NONE;
+                }
+
+                ESP_LOGI(TAG, "PROTOCOL USE: %d ", protocol_using);
+
+                switch (protocol_using)
+                {
+                case WIFI_PROTOCOL:
+                    //wifi_started = true;
+                    ESP_LOGI(TAG, "NOW USE WIFI");
+                    break;
+                case ETHERNET_PROTOCOL:
+                    //eth_started = true;
+                    ESP_LOGI(TAG, "NOW USE ETHERNET");
+                break;
+                case GSM_4G_PROTOCOL:
+                    //gsm_started = true;
+                    ESP_LOGI(TAG, "NOW USE GSM");
+                break;
+                default:
+                    eth_started = false;
+                    gsm_started = false;
+                    wifi_started = false;
+                    ESP_LOGE(TAG, "No internet connected");
+                    break;
+                }
+            }
+
             /*
                 lấy thông tin từ mqtt gửi xuống ble
                 định kì nhận bản tin heartbeat gửi lên topic
