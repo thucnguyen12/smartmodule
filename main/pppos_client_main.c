@@ -85,7 +85,7 @@
 
 #include "nvs_flash_app.h"
 
-#define BROKER_URL "mqtt://mqtt.eclipseprojects.io:1883"
+#define BROKER_URL "mqtt://mqtt.eclipseprojects.io"
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_PSK
 #define IS_WIFI_DISABLE 1
 
@@ -193,7 +193,13 @@ protocol_type protocol_using = DEFAULT_PROTOCOL;
 static char* wifi_name = CONFIG_ESP_WIFI_SSID;
 static char* wifi_pass = CONFIG_ESP_WIFI_PASSWORD;
 
-esp_mqtt_client_config_t mqtt_config;
+static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event);
+
+esp_mqtt_client_config_t mqtt_config;// = {
+        //     .uri = BROKER_URL,
+        //     .event_handle = mqtt_event_handler,
+        // };
+esp_mqtt_client_handle_t mqtt_client;
 static char mqtt_host [64];
 uint32_t mqtt_port;
 static char mqtt_username [64];
@@ -222,7 +228,7 @@ static info_config_t config_infor_now;
 
 //extern char recv_buf[64];
 //General variable
-esp_mqtt_client_handle_t mqtt_client;
+
 esp_eth_handle_t eth_handle;
 modem_dce_t *dce = NULL;
 static bool mqtt_server_ready = false;
@@ -594,60 +600,62 @@ void process_config_data (type_of_mqtt_data_t data_type, mqtt_config_list mqtt_c
 static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
 {
     esp_mqtt_client_handle_t client = event->client;
-    int msg_id;
+    int msg_id = 0;
     char string_key[32];
-    type_of_mqtt_data_t type_of_process_data = 0;
+    static type_of_mqtt_data_t type_of_process_data = 0;
     switch (event->event_id) {
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-        //publish info
-        info_device_t device_info;
-        memcpy (device_info.imei, GSM_IMEI, sizeof (GSM_IMEI));
-        memcpy (device_info.simIMEI, SIM_IMEI, sizeof(SIM_IMEI));
-        sprintf(device_info.firmware, "%s", FIRMWARE_VERSION);
-        sprintf(device_info.hardwareVersion, "%s", HARDWARE_VERSION);
-        make_device_info_payload (device_info, mqtt_payload);
-        esp_mqtt_client_publish(mqtt_client, info_topic_header, (char*)mqtt_payload, 0, 0, 0);
-        // truoc do can doc cau hinh ra tu flash
-        ESP_LOGI (TAG, "READ CONFIG DATA FROM FLASH");
-        // read_data_from_flash (&config_infor_now, sizeof (info_config_t), NVS_CONFIG_KEY);
-        // send_current_config (config_infor_now);
+        // //publish info
+        // info_device_t device_info;
+        // memcpy (device_info.imei, GSM_IMEI, sizeof (GSM_IMEI));
+        // memcpy (device_info.simIMEI, SIM_IMEI, sizeof(SIM_IMEI));
+        // sprintf(device_info.firmware, "%s", FIRMWARE_VERSION);
+        // sprintf(device_info.hardwareVersion, "%s", HARDWARE_VERSION);
+        // make_device_info_payload (device_info, mqtt_payload);
+        // if (mqtt_server_ready && header_subscribed)
+        // esp_mqtt_client_publish(mqtt_client, info_topic_header, (char*)mqtt_payload, 0, 0, 0);
+        // // truoc do can doc cau hinh ra tu flash
+        // ESP_LOGI (TAG, "READ CONFIG DATA FROM FLASH");
+        // // read_data_from_flash (&config_infor_now, sizeof (info_config_t), NVS_CONFIG_KEY);
+        // // send_current_config (config_infor_now);
         
-        esp_err_t err = ESP_OK;
-        for (mqtt_config_list i = 0; i < MAX_CONFIG_HANDLE; i++)
-        {
-            type_of_process_data = get_type_of_data (i);
-            err = read_config_data_from_flash (&config_infor_now, type_of_process_data, i);
-            if (err != ESP_OK)
-            {
-                make_key_to_store_type_in_nvs (string_key, i);
-                ESP_LOGI (TAG, "GOT ERR %d WHILE READING %s KEY", err, string_key);
-            }
-        }
-        send_current_config (config_infor_now);
-        /*
-            quet data trong flash va gui len server
-        */
-        // fire_status_t status_store_inflash;
-        for (uint8_t i = 0; i < ping_data_count_in_flash; i++)
-        {
-            sprintf (ping_data_key, NVS_DATA_PING, i);
-            // read_data_from_flash (&status_store_inflash, sizeof (fire_status_t), ping_data_key);
-            internal_flash_nvs_read_string (ping_data_key, mqtt_payload, sizeof (mqtt_payload));
-            // make_fire_status_payload (status_store_inflash, (char *)mqtt_payload); // Bo truong temper va fireZone
-            esp_mqtt_client_publish (mqtt_client, heart_beat_topic_header, mqtt_payload, 0, 0, 0);
-        }
-        ping_data_count_in_flash = 0; // reset after send all data in flash
-        // sensor_info_t data_sensor_store_in_flash;
-        for (uint8_t i = 0; i < data_sensor_count_in_flash; i++)
-        {
-            sprintf (ping_data_key, NVS_DATA_SENSOR, i);
-            //read_data_from_flash (&data_sensor_store_in_flash, sizeof (fire_status_t), ping_data_key);
-            internal_flash_nvs_read_string (ping_data_key, mqtt_payload, sizeof (mqtt_payload));
-            // make_sensor_info_payload (data_sensor_store_in_flash, (char *)mqtt_payload); // Bo truong temper va fireZone
-            esp_mqtt_client_publish (mqtt_client, sensor_topic_header, mqtt_payload, 0, 0, 0);
-        }
-        data_sensor_count_in_flash = 0; // reset after send all data in flash
+        // esp_err_t err = ESP_OK;
+        // for (mqtt_config_list i = 0; i < MAX_CONFIG_HANDLE; i++)
+        // {
+        //     type_of_process_data = get_type_of_data (i);
+        //     err = read_config_data_from_flash (&config_infor_now, type_of_process_data, i);
+        //     if (err != ESP_OK)
+        //     {
+        //         make_key_to_store_type_in_nvs (string_key, i);
+        //         ESP_LOGI (TAG, "GOT ERR %d WHILE READING %s KEY", err, string_key);
+        //     }
+        // }
+        // send_current_config (config_infor_now);
+        // /*
+        //     quet data trong flash va gui len server
+        // */
+        // // fire_status_t status_store_inflash;
+        // // for (uint8_t i = 0; i < ping_data_count_in_flash; i++)
+        // // {
+        // //     sprintf (ping_data_key, NVS_DATA_PING, i);
+        // //     // read_data_from_flash (&status_store_inflash, sizeof (fire_status_t), ping_data_key);
+        // //     internal_flash_nvs_read_string (ping_data_key, mqtt_payload, sizeof (mqtt_payload));
+        // //     // make_fire_status_payload (status_store_inflash, (char *)mqtt_payload); // Bo truong temper va fireZone
+        // //     //esp_mqtt_client_publish (mqtt_client, heart_beat_topic_header, mqtt_payload, 0, 0, 0);
+        // // }
+        // ping_data_count_in_flash = 0; // reset after send all data in flash
+        // static sensor_info_t data_sensor_store_in_flash;
+        // for (uint8_t i = 1; i < data_sensor_count_in_flash + 1; i++)
+        // {
+        //     sprintf (data_sensor_key, NVS_DATA_SENSOR, i);
+        //     read_data_from_flash (&data_sensor_store_in_flash, sizeof (sensor_info_t), data_sensor_key);
+        //     internal_flash_nvs_read_string (data_sensor_key, mqtt_payload, sizeof (mqtt_payload));
+        //     make_sensor_info_payload (data_sensor_store_in_flash, (char *)mqtt_payload); // Bo truong temper va fireZone
+        //     if (mqtt_server_ready && header_subscribed)
+        //     esp_mqtt_client_publish (mqtt_client, sensor_topic_header, mqtt_payload, 0, 0, 0);
+        // }
+        // data_sensor_count_in_flash = 0; // reset after send all data in flash
         xEventGroupSetBits(event_group, MQTT_CONNECT_BIT);
         break;
     case MQTT_EVENT_DISCONNECTED:
@@ -656,7 +664,8 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
         break;
     case MQTT_EVENT_SUBSCRIBED:
         ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
-        msg_id = esp_mqtt_client_publish(client, "/topic/esp-pppos", "esp32-pppos", 0, 0, 0);
+
+        //msg_id = esp_mqtt_client_publish(client, "/topic/esp-pppos", "esp32-pppos", 0, 0, 0);
         ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
         break;
     case MQTT_EVENT_UNSUBSCRIBED:
@@ -1008,6 +1017,7 @@ void send_current_config (info_config_t config_infor_now)
     config_infor_now.zoneDelay = 0; ///CONFIG_ZONE_DELAY;
     
     make_config_info_payload (config_infor_now, (char*)mqtt_payload);
+    if (mqtt_server_ready && header_subscribed)
     esp_mqtt_client_publish(mqtt_client, config_topic_header, (char*)mqtt_payload, 0, 0, 0);
 }
 //******************************************* NVS PLACE *****************************///
@@ -1131,6 +1141,58 @@ esp_err_t err;
 node_sensor_data_t node_data;
 min_msg_t min_pair_data_msg;
 
+#define NVS_MAC_SPACE "mac_space"
+char mac_space_str [384];
+
+bool check_mac_data (char * mac)
+{
+    static char* string_buff;
+    memset (mac_space_str, '\0', 384);
+    string_buff = strstr (mac_space_str, mac);
+    internal_flash_nvs_read_string (NVS_MAC_SPACE, mac_space_str, 384);
+    if (string_buff)
+    {
+        return true;
+    }
+    else
+    {
+        sprintf (mac_space_str + strlen (mac_space_str), "%s", mac);
+        internal_flash_nvs_write_string (NVS_MAC_SPACE, mac_space_str);
+        return false;
+    }
+}
+
+static uint32_t last_time_stamp = 0;
+static uint8_t last_status = 0;
+
+void handle_sensor_data_while_lost_connection (sensor_info_t* sensor_info)
+{
+    static sensor_info_t data_sensor_read;
+    for (uint16_t i = 0; i < data_sensor_count_in_flash; i++)
+    {
+        sprintf (data_sensor_key, NVS_DATA_SENSOR, i);
+        err = read_data_from_flash (&data_sensor_read, sizeof (sensor_info_t), data_sensor_key);
+        if (err == ESP_OK)
+        {
+            if ((sensor_info->status != last_status) || ((sensor_info->updateTime - last_time_stamp) > 60))
+            {
+                write_data_to_flash (sensor_info, sizeof (sensor_info_t), data_sensor_key);
+            }
+            else
+            {
+                continue;
+            }
+        }
+        else if (err == ESP_ERR_NVS_NOT_FOUND)
+        {
+            data_sensor_count_in_flash++;
+            sprintf (data_sensor_key, NVS_DATA_SENSOR, data_sensor_count_in_flash);
+            write_data_to_flash (sensor_info, sizeof (sensor_info_t), data_sensor_key);
+        }
+    }
+}
+
+
 
 void min_rx_callback(void *min_context, min_msg_t *frame)
 {
@@ -1143,6 +1205,7 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
         }
         break;
     case MIN_ID_SEND_AND_RECEIVE_HEARTBEAT_MSG:
+        ESP_LOGI (TAG, "Ping data event");
         // RECEIVE DATA NEED TO SEND TO MQTT SERVER
         memcpy (payload_buffer, frame->payload, 256);
         beacon_ping_data_handle = (app_beacon_ping_msg_t*) payload_buffer;
@@ -1207,16 +1270,29 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
         // }
         // else
         // {
-                if (mqtt_server_ready && (gsm_started || wifi_started || eth_started))
+                if (mqtt_server_ready && (gsm_started || wifi_started || eth_started) && header_subscribed)
                 esp_mqtt_client_publish(mqtt_client, heart_beat_topic_header, (char*)mqtt_payload, 0, 0, 0);
         // }
         break;
     case MIN_ID_SEND_AND_RECEIVE_BEACON_MSG:
-
+        ESP_LOGI (TAG, "Sensor data event");
         memcpy (payload_buffer, frame->payload, 256);
+
+        // for (uint16_t i = 0; i < 256; i++)
+        // {
+        //     if((i %10) == 0)
+        //     {
+        //         printf("\r\n");
+        //     }
+        //     printf ("%x-",(uint8_t)payload_buffer[i]);
+        // }
+        // printf ("\r\n");
+
         beacon_data_handle = (app_beacon_data_t *) payload_buffer;
+        ESP_LOGI (TAG,"MAC: %02x: %02x: %02x: %02x: %02x: %02x", beacon_data_handle->device_mac[0], beacon_data_handle->device_mac[1], beacon_data_handle->device_mac[2], beacon_data_handle->device_mac[3], beacon_data_handle->device_mac[4], beacon_data_handle->device_mac[5]);
         memcpy(sensor_info.mac, beacon_data_handle->device_mac, 6);
         sprintf (sensor_info.firmware, "%d", beacon_data_handle->fw_verison);
+        sensor_info.battery = beacon_data_handle->battery;
         if (beacon_data_handle->propreties.Name.alarmState)
         {
             sensor_info.status = 1;
@@ -1228,20 +1304,44 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
         sensor_info.temperature = beacon_data_handle->teperature_value;
         sensor_info.smoke = beacon_data_handle->smoke_value;
         sensor_info.updateTime = app_time ();
-        ESP_LOGI (TAG, "Sensor data event");
-        make_sensor_info_payload (sensor_info, (char *)mqtt_payload); 
-        if (0)//!(gsm_started && wifi_started && eth_started))
+
+        memset (mqtt_payload, '\0', sizeof (mqtt_payload));
+        make_sensor_info_payload (sensor_info, (char *)mqtt_payload);
+        ESP_LOGI (TAG, "SENSOR PAYLOAD: %s", (char *)mqtt_payload);
+
+        // if ((sensor_info.status != last_status) && (!(gsm_started && wifi_started && eth_started))) // no network and change status
+        // {
+        //     last_status = sensor_info.status;
+        //     data_sensor_count_in_flash++;
+        //     sprintf (data_sensor_key, NVS_DATA_SENSOR, data_sensor_count_in_flash);
+        //     //err = internal_flash_nvs_write_string (data_sensor_key, mqtt_payload);
+        //     err = write_data_to_flash (&sensor_info, sizeof (sensor_info_t), data_sensor_key);
+        //     ESP_LOGI (TAG, "Write sensor data to flash because there are may fire: %s", (err = ESP_OK) ? "Fail" : "OK");
+        // }
+
+        // if ((!(gsm_started && wifi_started && eth_started)) && ((sensor_info.updateTime - last_time_stamp) > 60))
+        // {
+        //     last_time_stamp = sensor_info.updateTime;
+            
+        //     data_sensor_count_in_flash++;
+        //     sprintf (data_sensor_key, NVS_DATA_SENSOR, data_sensor_count_in_flash);
+        //     //err = internal_flash_nvs_write_string (data_sensor_key, mqtt_payload);
+        //     err = write_data_to_flash (&sensor_info, sizeof (sensor_info_t), data_sensor_key);
+        //     ESP_LOGI (TAG, "Write sensor data to flash: %s", (err = ESP_OK) ? "Fail" : "OK");
+        // }
+        if (protocol_using == PROTOCOL_NONE)
         {
-            data_sensor_count_in_flash++;
-            sprintf (data_sensor_key, NVS_DATA_SENSOR, data_sensor_count_in_flash);
-            // err = write_data_to_flash (mqtt_payload, strlen ((char *)mqtt_payload), data_sensor_key);
-            err = internal_flash_nvs_write_string (ping_data_key, mqtt_payload);
-            ESP_LOGI (TAG, "Write sensor data to flash: %s", (err = ESP_OK) ? "Fail" : "OK");
+            ESP_LOGI (TAG, "NO NETWORK CONNECTION, WRITE DATA TO FLASH");
+            handle_sensor_data_while_lost_connection (&sensor_info);
         }
-        else 
+        else
         {
-            if (mqtt_server_ready)
-            esp_mqtt_client_publish(mqtt_client, sensor_topic_header, (char*)mqtt_payload, 0, 0, 0);//only send when network is starteed
+            ESP_LOGI (TAG, "server ok: %d, header ok: %d", mqtt_server_ready, header_subscribed);
+            if (mqtt_server_ready && header_subscribed)
+            {
+                ESP_LOGI (TAG, "PUBLISH PAYLOAD TO MQTT");
+                esp_mqtt_client_publish (mqtt_client, sensor_topic_header, (char*) mqtt_payload, 0, 0, 0); //only send when network is started
+            }   
         }
         break;
     case MIN_ID_PING_ESP_ALIVE:
@@ -1265,7 +1365,6 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
                 // node_data.device_type = pair_info->device_type;
                 build_string_from_MAC (pair_info->device_mac, mac_key);
                 // write
-                
                 err = find_and_write_into_mac_key_space(&unicast_addr, mac_key);
             }            
         }
@@ -1493,6 +1592,7 @@ esp_err_t get_interface_status (void)
 
 void app_main(void)
 {
+    char string_key[32];
 #warning "need gpio config"
     gsm_gpio_config ();
 
@@ -1629,17 +1729,9 @@ void app_main(void)
     assert(esp_netif);
     void *modem_netif_adapter;
 */
-    
-    if(dce == NULL)
-    dce = ec2x_init (dte);
-    // xSemaphoreTake (GSM_Sem, 20);
-    // xSemaphoreTake (GSM_Sem, 20000/portTICK_RATE_MS);
-    // // GSM_IMEI[16]; store gsm imei
+    //init gsm
     // if(dce == NULL)
-    // {
-    //     // INIT FAIL
-    //     protocol_using = WIFI_PROTOCOL;
-    // }
+    // dce = ec2x_init (dte);
     
     EventBits_t ubits;
 
@@ -1684,67 +1776,77 @@ void app_main(void)
     /* Register event handler */
     if (dte != NULL)
     {
+        ESP_LOGW (TAG, "MODEM HANDLER REGISTER NOW");
         ESP_ERROR_CHECK(esp_modem_set_event_handler(dte, modem_event_handler, ESP_EVENT_ANY_ID, NULL)); //FOR MODEM
+        ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &modem_event_handler, NULL));
     }
     ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, &eth_event_handler, NULL)); //  FOR ETH
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &got_ip_event_handler, NULL)); // FOR IP
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_LOST_IP, &got_ip_event_handler, NULL)); // FOR IP
 
-    ESP_LOGI (TAG, "BEGIN WIFI");
-    app_wifi_connect (wifi_name, wifi_pass);
-    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
-                                           WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-                                           pdFALSE,
-                                           pdFALSE,
-                                           50000);
-    if (bits & WIFI_CONNECTED_BIT)
-    {
-        ESP_LOGI (TAG, "WIFI CONNECT");
-        ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
-                CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
-        wifi_started = true;
-        protocol_using = WIFI_PROTOCOL;
-    }
-    else if (bits & WIFI_FAIL_BIT)
-    {
-        ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
-                CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
-        wifi_started = false;
-        protocol_using = ETHERNET_PROTOCOL;
-    }
-    else
-    {
-        wifi_started = false;
-        ESP_LOGE(TAG, "UNEXPECTED WIFI EVENT");
-    }
-    
-    // if (wifi_started == false)
+    // ESP_LOGI (TAG, "BEGIN WIFI");
+    // app_wifi_connect (wifi_name, wifi_pass);
+    // EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
+    //                                        WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+    //                                        pdFALSE,
+    //                                        pdFALSE,
+    //                                        50000);
+    // if (bits & WIFI_CONNECTED_BIT)
     // {
-    //     ESP_ERROR_CHECK(esp_eth_start (eth_handle)); //start ethenet 
-    //     ESP_LOGI (TAG, "ETH CONNECT");
+    //     ESP_LOGI (TAG, "WIFI CONNECT");
+    //     ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
+    //             CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
+    //     wifi_started = true;
+    //     protocol_using = WIFI_PROTOCOL;
     // }
+    // else if (bits & WIFI_FAIL_BIT)
+    // {
+    //     ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
+    //             CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
+    //     wifi_started = false;
+    //     protocol_using = ETHERNET_PROTOCOL;
+    // }
+    // else
+    // {
+    //     wifi_started = false;
+    //     ESP_LOGE(TAG, "UNEXPECTED WIFI EVENT");
+    // }
+    
+    // // if (wifi_started == false)
+    // // {
+    // //     ESP_ERROR_CHECK(esp_eth_start (eth_handle)); //start ethenet 
+    // //     ESP_LOGI (TAG, "ETH CONNECT");
+    // // }
 
-    do_ping_cmd();//pinging to addr
+    // do_ping_cmd();//pinging to addr
 
-    // ESP_ERROR_CHECK(esp_task_wdt_reset());
-    //init testing applications
-    EventBits_t uxBitsPing = xEventGroupWaitBits(s_wifi_event_group, WIFI_PING_TIMEOUT | WIFI_PING_SUCESS, pdTRUE, pdFALSE, portMAX_DELAY);
-    if (uxBitsPing & WIFI_PING_TIMEOUT)
-    {
-        ESP_LOGI (TAG, "PING TIMEOUT");
-        protocol_using = ETHERNET_PROTOCOL;
-    }
-    else if (uxBitsPing & WIFI_PING_SUCESS)
-    {
-        ESP_LOGI (TAG, "PING OK");
-    }
-    else
-    {
-        ESP_LOGI (TAG, "PING UNEXPECTED EVENT");
-    }
+    // // ESP_ERROR_CHECK(esp_task_wdt_reset());
+    // //init testing applications
+    // EventBits_t uxBitsPing = xEventGroupWaitBits(s_wifi_event_group, WIFI_PING_TIMEOUT | WIFI_PING_SUCESS, pdTRUE, pdFALSE, portMAX_DELAY);
+    // if (uxBitsPing & WIFI_PING_TIMEOUT)
+    // {
+    //     ESP_LOGI (TAG, "PING TIMEOUT");
+    //     protocol_using = ETHERNET_PROTOCOL;
+    // }
+    // else if (uxBitsPing & WIFI_PING_SUCESS)
+    // {
+    //     ESP_LOGI (TAG, "PING OK");
+    // }
+    // else
+    // {
+    //     ESP_LOGI (TAG, "PING UNEXPECTED EVENT");
+    // }
     
     mqtt_info_struct mqtt_broker_str;
     // ESP_ERROR_CHECK(esp_task_wdt_reset());
+    //test mqtt now 
+    // mqtt_config.uri = "mqtt://mqtt.eclipse.org:1883";
+    // mqtt_config.event_handle = mqtt_event_handler;
+        
+    // mqtt_client = esp_mqtt_client_init(&mqtt_config);
+    // esp_mqtt_client_start(mqtt_client);
+
+    //end test mqtt broker
     if (mqtt_server_ready == false)
     {
         ESP_LOGI (TAG, "MQTT INIT START");
@@ -1917,68 +2019,136 @@ void app_main(void)
         //register topic
 
         //if (memcmp (GSM_IMEI, "0000000000000000", 16) != 0)
-        
-        if (got_gsm_imei && mqtt_server_ready&& (!header_subscribed))
+        EventBits_t uxBits = xEventGroupWaitBits(event_group, MQTT_CONNECT_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
+        if (/*got_gsm_imei &&*/ mqtt_server_ready && (!header_subscribed))
         {
             make_mqtt_topic_header (HEART_BEAT_HEADER, "smart_module", GSM_IMEI, heart_beat_topic_header);
             int msg_id = esp_mqtt_client_subscribe(mqtt_client, heart_beat_topic_header, 0);
             ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+            ESP_LOGI(TAG, "topic name = %s", heart_beat_topic_header);
 
             make_mqtt_topic_header (FIRE_ALARM_HEADER, "smart_module", GSM_IMEI, fire_alarm_topic_header);
             msg_id = esp_mqtt_client_subscribe(mqtt_client, fire_alarm_topic_header, 0);
             ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
-            
+            ESP_LOGI(TAG, "topic name = %s", fire_alarm_topic_header);
+
+
             make_mqtt_topic_header (SENSOR_HEADER, "smart_module", GSM_IMEI, sensor_topic_header);
             msg_id = esp_mqtt_client_subscribe(mqtt_client, sensor_topic_header, 0);
             ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+            ESP_LOGI(TAG, "topic name = %s", sensor_topic_header);
 
             make_mqtt_topic_header (INFO_HEADER, "smart_module", GSM_IMEI, info_topic_header);
             msg_id = esp_mqtt_client_subscribe(mqtt_client, info_topic_header, 0);
             ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+            ESP_LOGI(TAG, "topic name = %s", info_topic_header);
 
             make_mqtt_topic_header (CONFIG_HEADER, "smart_module", GSM_IMEI, config_topic_header);
             msg_id = esp_mqtt_client_subscribe(mqtt_client, config_topic_header, 0);
             ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);        
+            ESP_LOGI(TAG, "topic name = %s", config_topic_header);
 
             make_mqtt_topic_header (OTA_HEADER, "smart_module", GSM_IMEI, ota_header);
             msg_id = esp_mqtt_client_subscribe(mqtt_client, ota_header, 0);
             ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);  
+            ESP_LOGI(TAG, "topic name = %s", ota_header);
 
             header_subscribed = true;         
         }
         while (1) //main process loop
         {
+            EventBits_t uxBits = xEventGroupWaitBits(event_group, MQTT_CONNECT_BIT, pdTRUE, pdTRUE, 20/portTICK_RATE_MS);
+            if ( (uxBits & MQTT_CONNECT_BIT) == MQTT_CONNECT_BIT)
+            {
+                info_device_t device_info;
+                memcpy (device_info.imei, GSM_IMEI, sizeof (GSM_IMEI));
+                memcpy (device_info.simIMEI, SIM_IMEI, sizeof(SIM_IMEI));
+                sprintf(device_info.firmware, "%s", FIRMWARE_VERSION);
+                sprintf(device_info.hardwareVersion, "%s", HARDWARE_VERSION);
+                make_device_info_payload (device_info, mqtt_payload);
+                if (mqtt_server_ready && header_subscribed)
+                esp_mqtt_client_publish(mqtt_client, info_topic_header, (char*)mqtt_payload, 0, 0, 0);
+                // truoc do can doc cau hinh ra tu flash
+                ESP_LOGI (TAG, "READ CONFIG DATA FROM FLASH");
+                // read_data_from_flash (&config_infor_now, sizeof (info_config_t), NVS_CONFIG_KEY);
+                // send_current_config (config_infor_now);
+            
+                esp_err_t err = ESP_OK;
+                for (mqtt_config_list i = 0; i < MAX_CONFIG_HANDLE; i++)
+                {
+                    static type_of_mqtt_data_t type_of_process_data;
+                    type_of_process_data = get_type_of_data (i);
+                    err = read_config_data_from_flash (&config_infor_now, type_of_process_data, i);
+                    if (err != ESP_OK)
+                    {
+                        make_key_to_store_type_in_nvs (string_key, i);
+                        ESP_LOGI (TAG, "GOT ERR %d WHILE READING %s KEY", err, string_key);
+                    }
+                }
+                send_current_config (config_infor_now);
+                /*
+                    quet data trong flash va gui len server
+                */
+                // fire_status_t status_store_inflash;
+                // for (uint8_t i = 0; i < ping_data_count_in_flash; i++)
+                // {
+                //     sprintf (ping_data_key, NVS_DATA_PING, i);
+                //     // read_data_from_flash (&status_store_inflash, sizeof (fire_status_t), ping_data_key);
+                //     internal_flash_nvs_read_string (ping_data_key, mqtt_payload, sizeof (mqtt_payload));
+                //     // make_fire_status_payload (status_store_inflash, (char *)mqtt_payload); // Bo truong temper va fireZone
+                //     //esp_mqtt_client_publish (mqtt_client, heart_beat_topic_header, mqtt_payload, 0, 0, 0);
+                // }
+                ping_data_count_in_flash = 0; // reset after send all data in flash
+                static sensor_info_t data_sensor_store_in_flash;
+                for (uint8_t i = 1; i < data_sensor_count_in_flash + 1; i++)
+                {
+                    sprintf (data_sensor_key, NVS_DATA_SENSOR, i);
+                    read_data_from_flash (&data_sensor_store_in_flash, sizeof (sensor_info_t), data_sensor_key);
+                    internal_flash_nvs_read_string (data_sensor_key, mqtt_payload, sizeof (mqtt_payload));
+                    make_sensor_info_payload (data_sensor_store_in_flash, (char *)mqtt_payload); // Bo truong temper va fireZone
+                    if (mqtt_server_ready && header_subscribed)
+                    esp_mqtt_client_publish (mqtt_client, sensor_topic_header, mqtt_payload, 0, 0, 0);
+                }
+                data_sensor_count_in_flash = 0; // reset after send all data in flash
+            }
+
             if (got_gsm_imei && mqtt_server_ready && (!header_subscribed))
             {
                 make_mqtt_topic_header (HEART_BEAT_HEADER, "smart_module", GSM_IMEI, heart_beat_topic_header);
                 int msg_id = esp_mqtt_client_subscribe(mqtt_client, heart_beat_topic_header, 0);
                 ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+                ESP_LOGI(TAG, "topic name = %s", heart_beat_topic_header);
 
                 make_mqtt_topic_header (FIRE_ALARM_HEADER, "smart_module", GSM_IMEI, fire_alarm_topic_header);
                 msg_id = esp_mqtt_client_subscribe(mqtt_client, fire_alarm_topic_header, 0);
                 ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+                ESP_LOGI(TAG, "topic name = %s", fire_alarm_topic_header);
                 
                 make_mqtt_topic_header (SENSOR_HEADER, "smart_module", GSM_IMEI, sensor_topic_header);
                 msg_id = esp_mqtt_client_subscribe(mqtt_client, sensor_topic_header, 0);
                 ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+                ESP_LOGI(TAG, "topic name = %s", sensor_topic_header);
 
                 make_mqtt_topic_header (INFO_HEADER, "smart_module", GSM_IMEI, info_topic_header);
                 msg_id = esp_mqtt_client_subscribe(mqtt_client, info_topic_header, 0);
                 ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+                ESP_LOGI(TAG, "topic name = %s", info_topic_header);
 
                 make_mqtt_topic_header (CONFIG_HEADER, "smart_module", GSM_IMEI, config_topic_header);
                 msg_id = esp_mqtt_client_subscribe(mqtt_client, config_topic_header, 0);
-                ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);        
+                ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id); 
+                ESP_LOGI(TAG, "topic name = %s", config_topic_header);       
 
                 make_mqtt_topic_header (OTA_HEADER, "smart_module", GSM_IMEI, ota_header);
                 msg_id = esp_mqtt_client_subscribe(mqtt_client, ota_header, 0);
-                ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);   
+                ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+                ESP_LOGI(TAG, "topic name = %s", ota_header);   
 
                 header_subscribed = true;     
             }
 
             // ESP_ERROR_CHECK(esp_task_wdt_reset());
-            EventBits_t uxBits = xEventGroupWaitBits(event_group, MQTT_DIS_CONNECT_BIT, pdTRUE, pdTRUE, 5/ portTICK_RATE_MS); // piority check disconnected event
+            uxBits = xEventGroupWaitBits(event_group, MQTT_DIS_CONNECT_BIT, pdTRUE, pdTRUE, 5/ portTICK_RATE_MS); // piority check disconnected event
             if ( (uxBits & MQTT_DIS_CONNECT_BIT) == MQTT_DIS_CONNECT_BIT)
             {
                 ESP_LOGI (TAG, "mqtt disconnected bitrev");

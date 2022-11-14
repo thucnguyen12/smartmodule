@@ -240,7 +240,7 @@ typedef struct
     uint8_t IsCustom;
 } node_custom_data_t;
 
-typedef struct __attribute((packed))
+typedef struct 
 {
   uint8_t device_mac[6];
   //uint8_t device_type;// Maybe Bitfield
@@ -254,7 +254,7 @@ typedef struct __attribute((packed))
   uint32_t timestamp; /*<Current tick when receive this value>*/
   node_proprety_t propreties; /*Node's Propreties*/
   node_custom_data_t custom_data;
-} app_beacon_data_t;
+} __attribute((packed)) app_beacon_data_t;
 
 typedef struct
 {

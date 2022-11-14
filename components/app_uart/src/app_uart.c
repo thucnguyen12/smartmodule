@@ -50,7 +50,7 @@ void uart_event_task(void *pvParameters)
         //Waiting for UART event.
         if(xQueueReceive(uart1_queue, (void * )&event, (TickType_t)500)) {
             bzero(dtmp, RD_BUF_SIZE);
-            ESP_LOGI(TAG, "uart2 event: %d", event.type);
+            ESP_LOGD(TAG, "uart2 event: %d", event.type);
             switch(event.type) {
                 //Event of UART receving data
                 /*We'd better handler data event fast, there would be much more data events than

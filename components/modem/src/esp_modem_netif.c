@@ -162,19 +162,24 @@ esp_err_t esp_modem_netif_set_default_handlers(void *h, esp_netif_t * esp_netif)
     esp_modem_netif_driver_t *driver = h;
     esp_err_t ret;
     ret = esp_modem_set_event_handler(driver->dte, esp_netif_action_start, ESP_MODEM_EVENT_PPP_START, esp_netif);
+    
     if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "ESP_MODEM_EVENT_PPP_START");
         goto set_event_failed;
     }
     ret = esp_modem_set_event_handler(driver->dte, esp_netif_action_stop, ESP_MODEM_EVENT_PPP_STOP, esp_netif);
     if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "ESP_MODEM_EVENT_PPP_STOP");
         goto set_event_failed;
     }
     ret = esp_event_handler_register(IP_EVENT, IP_EVENT_PPP_GOT_IP, esp_netif_action_connected, esp_netif);
     if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "IP_EVENT_PPP_GOT_IP");
         goto set_event_failed;
     }
     ret = esp_event_handler_register(IP_EVENT, IP_EVENT_PPP_LOST_IP, esp_netif_action_disconnected, esp_netif);
     if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "IP_EVENT_PPP_LOST_IP");
         goto set_event_failed;
     }
     return ESP_OK;

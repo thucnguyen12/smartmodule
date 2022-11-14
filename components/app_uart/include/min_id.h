@@ -48,4 +48,7 @@
 //PING TIME
 #define MIN_ID_TIMESTAMP 0x30
 
+//GPIO CONTROL
+#define MIN_ID_GPIO_CONTROL 0X40
+
 #endif /* MIN_ID_H */

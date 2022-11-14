@@ -68,7 +68,12 @@ void make_firealarm_payload (fire_safe_t info_fire_alarm, char *str_out)
 void make_sensor_info_payload (sensor_info_t sensor, char *str_out)
 {
     uint32_t index = 0;
-    index += sprintf (str_out + index, "{\r\n\"mac\":%s\r\n", sensor.mac);
+    index += sprintf (str_out + index, "{\r\n\"mac:\" %02x: %02x: %02x: %02x: %02x: %02x\r\n", sensor.mac[0],
+                                                                                                sensor.mac[1], 
+                                                                                                sensor.mac[2],
+                                                                                                sensor.mac[3],
+                                                                                                sensor.mac[4],
+                                                                                                sensor.mac[5]);
     index += sprintf (str_out + index, "\"firmware\":%s\r\n", sensor.firmware);
     index += sprintf (str_out + index, "\"status\":%u\r\n", sensor.status);
     index += sprintf (str_out + index, "\"battery\":%u\r\n", sensor.battery);

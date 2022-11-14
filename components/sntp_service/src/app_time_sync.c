@@ -97,10 +97,10 @@ uint32_t app_time(void)
     static struct tm timeinfo = { 0 };
     static struct tm last_timeinfo = { 0 };
     date_time_t time_now_struct;
-    if ((timeinfo.tm_hour - last_timeinfo.tm_hour) < 1)
-    {
-        return 0;
-    }
+    // if ((timeinfo.tm_hour - last_timeinfo.tm_hour) < 1)
+    // {
+    //     return 0;
+    // }
     // need update time before get localtime
     time(&now);
     localtime_r(&now, &timeinfo);
@@ -128,7 +128,7 @@ uint32_t app_time(void)
 
     char strftime_buf[64];
     strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-    ESP_LOGI(TAG, "The current date/time is: %s", strftime_buf);
+    ESP_LOGD(TAG, "The current date/time is: %s", strftime_buf);
     return timstamp;
 }
 
