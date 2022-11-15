@@ -52,8 +52,6 @@
 #include "http_request.h"
 static const char *TAG = "cli";
 
-extern char* key_table;
-
 extern min_context_t m_min_context;
 extern void send_min_data(min_msg_t *min_msg);
 

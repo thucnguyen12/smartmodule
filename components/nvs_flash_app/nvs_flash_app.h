@@ -151,5 +151,7 @@ int32_t internal_flash_nvs_write_u8(char *key, uint8_t value);
 int32_t internal_flash_nvs_get_u8(char *key, uint8_t *value);
 
 uint32_t read_config_data_from_flash (info_config_t* config, type_of_mqtt_data_t data_type, mqtt_config_list mqtt_config_list);
+void internal_flash_store_default_config(void);
+
 
 #endif

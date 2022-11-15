@@ -67,6 +67,13 @@ typedef struct
     int updateTime;
 }__attribute__((packed)) sensor_info_t;
 
+typedef struct 
+{
+    sensor_info_t sensor_info;
+    int last_updateTime;
+    int last_status;
+}__attribute__((packed)) sensor_info_in_flash_t;
+
 
 typedef struct 
 {

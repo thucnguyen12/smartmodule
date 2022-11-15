@@ -20,7 +20,7 @@
 #include "esp_log.h"
 
 static const char *TAG = "esp-modem-compat";
-extern esp_netif_t *gsm_esp_netif = NULL;
+static esp_netif_t *gsm_netif = NULL;
 extern bool gsm_started;
 
 static void on_modem_compat_handler(void *arg, esp_event_base_t event_base,
@@ -104,19 +104,19 @@ esp_err_t esp_modem_setup_ppp(modem_dte_t *dte)
     // Init netif object
     // esp_netif_config_t cfg = ESP_NETIF_DEFAULT_PPP();
     
-    gsm_esp_netif = esp_netif_new(&cfg);
-    assert(gsm_esp_netif);
+    gsm_netif = esp_netif_new(&cfg);
+    assert(gsm_netif);
 
     // event loop has to be created when using this API -- create and ignore failure if already created
     esp_event_loop_create_default();
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &on_ip_event, NULL));
-#if defined(CONFIG_EXAMPLE_MODEM_PPP_AUTH_USERNAME) && defined(CONFIG_EXAMPLE_MODEM_PPP_AUTH_PASSWORD)
-    esp_netif_ppp_set_auth(gsm_esp_netif, auth_type, CONFIG_EXAMPLE_MODEM_PPP_AUTH_USERNAME, CONFIG_EXAMPLE_MODEM_PPP_AUTH_PASSWORD);
-#endif
+// #if defined(CONFIG_EXAMPLE_MODEM_PPP_AUTH_USERNAME) && defined(CONFIG_EXAMPLE_MODEM_PPP_AUTH_PASSWORD)
+//     esp_netif_ppp_set_auth(gsm_netif, auth_type, CONFIG_EXAMPLE_MODEM_PPP_AUTH_USERNAME, CONFIG_EXAMPLE_MODEM_PPP_AUTH_PASSWORD);
+// #endif
     void *modem_netif_adapter = esp_modem_netif_setup(dte);
-    esp_modem_netif_set_default_handlers(modem_netif_adapter, gsm_esp_netif);
+    esp_modem_netif_set_default_handlers(modem_netif_adapter, gsm_netif);
     /* attach the modem to the network interface */
-    return esp_netif_attach(gsm_esp_netif, modem_netif_adapter);
+    return esp_netif_attach(gsm_netif, modem_netif_adapter);
 }
 
 esp_err_t esp_modem_exit_ppp(modem_dte_t *dte)

@@ -11,32 +11,32 @@ void make_mqtt_topic_header(header_type_t header_type ,char *topic_hr, char *IME
     
     switch (header_type)
     {
-    case HEART_BEAT_HEADER:
-        sprintf (str_out, "%s/d2g/heartbeat/%s", topic_hr, IMEI);
-        ESP_LOGI(TAG, "creat heart beat header");
-        break;
-    case FIRE_ALARM_HEADER:
-        sprintf (str_out, "%s/d2g/fire/%s", topic_hr, IMEI);
-        ESP_LOGI(TAG, "creat fire header");
-        break;
-    case SENSOR_HEADER:
-        sprintf (str_out, "%s/d2g/sensor/%s", topic_hr, IMEI);
-        ESP_LOGI(TAG, "creat sensor header");
-        break;
-    case INFO_HEADER:
-        sprintf (str_out, "%s/d2g/info/%s", topic_hr, IMEI);
-        ESP_LOGI(TAG, "creat info header");
-        break;
-    case CONFIG_HEADER:
-        sprintf (str_out, "%s/d2g/config/%s", topic_hr, IMEI);
-        ESP_LOGI(TAG, "creat config header");
-        break;
-    case OTA_HEADER:
-        sprintf (str_out, "%s/d2g/ota/%s", topic_hr, IMEI);
-        ESP_LOGI(TAG, "creat ota header");
-        break;
-    default:
-        break;
+        case HEART_BEAT_HEADER:
+            snprintf (str_out, 43, "%s/d2g/heartbeat/%s\r\n", topic_hr, IMEI);
+            ESP_LOGI(TAG, "creat heart beat header");
+            break;
+        case FIRE_ALARM_HEADER:
+            snprintf (str_out, 38, "%s/d2g/fire/%s\r\n", topic_hr, IMEI);
+            ESP_LOGI(TAG, "creat fire header");
+            break;
+        case SENSOR_HEADER:
+            snprintf (str_out, 40, "%s/d2g/sensor/%s\r\n", topic_hr, IMEI);
+            ESP_LOGI(TAG, "creat sensor header");
+            break;
+        case INFO_HEADER:
+            snprintf (str_out, 38, "%s/d2g/info/%s\r\n", topic_hr, IMEI);
+            ESP_LOGI(TAG, "creat info header");
+            break;
+        case CONFIG_HEADER:
+            snprintf (str_out, 40,"%s/d2g/config/%s\r\n", topic_hr, IMEI);
+            ESP_LOGI(TAG, "creat config header");
+            break;
+        case OTA_HEADER:
+            snprintf (str_out, 37,"%s/d2g/ota/%s\r\n", topic_hr, IMEI);
+            ESP_LOGI(TAG, "creat ota header");
+            break;
+        default:
+            break;
     }
 }
 

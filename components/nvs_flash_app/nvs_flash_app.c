@@ -11,36 +11,198 @@ static int32_t m_err_code = ESP_OK;
 
 
 
-char* key_table [MAX_CONFIG_HANDLE] = {
-    "topicHeader",
-    "mqttAddress",
-    "mqttUserName",
-    "mqttPassword",
-    "chargingInterval",
-    "unchargeInterval",
-    "userPhoneNumber1",
-    "userPhoneNumber2",
-    "userPhoneNumber3",
-    "buzzerEnable",
-    "syncAlarm",
-    "networkAddress",
-    "smokeSensorWakeupInterval",
-    "smokeSensorHeartbeatInterval",
-    "smokeSensorThresHole",
-    "tempSensorWakeupInterval",
-    "tempSensorHeartbeatInterval",
-    "tempThreshHold",
-    "httpDnsName",
-    "httpUsername",
-    "httpDnsPass", 
-    "httpDnsPort",
-    "wifiname",
-    "wifipass",
-    "wifiDisable",
-    "pingMainServer",
-    "pingBackupServer",
-    "inputActiveLevel"
-};
+// char* key_table [MAX_CONFIG_HANDLE] = {
+//     "topicHeader",
+//     "mqttAddress",
+//     "mqttUserName",
+//     "mqttPassword",
+//     "chargingInterval",
+//     "unchargeInterval",
+//     "userPhoneNumber1",
+//     "userPhoneNumber2",
+//     "userPhoneNumber3",
+//     "buzzerEnable",
+//     "syncAlarm",
+//     "networkAddress",
+//     "smokeSensorWakeupInterval",
+//     "smokeSensorHeartbeatInterval",
+//     "smokeSensorThresHole",
+//     "tempSensorWakeupInterval",
+//     "tempSensorHeartbeatInterval",
+//     "tempThreshHold",
+//     "httpDnsName",
+//     "httpUsername",
+//     "httpDnsPass", 
+//     "httpDnsPort",
+//     "wifiname",
+//     "wifipass",
+//     "wifiDisable",
+//     "pingMainServer",
+//     "pingBackupServer",
+//     "inputActiveLevel"
+// };
+
+static void process_default_config_data (type_of_mqtt_data_t data_type, mqtt_config_list mqtt_config_list)
+{
+    static char string_key[32];
+    make_key_to_store_type_in_nvs (string_key, mqtt_config_list);
+    switch (data_type)
+    {
+    case STRING_TYPE:
+        if (1)
+        {
+            if (mqtt_config_list == TOPIC_HDR)
+            {
+                //memcpy (config_infor_now.topic_hr, "SmartModule", strlen ("SmartModule"));
+                internal_flash_nvs_write_string (string_key, "SmartModule");
+            }
+            else if (mqtt_config_list == MQTT_ADDR)
+            {
+                //memcpy (config_infor_now.mqtt_add, "14.248.80.124", strlen ("14.248.80.124"));
+                internal_flash_nvs_write_string (string_key, "14.248.80.124");
+            }
+            else if (mqtt_config_list == MQTT_USER)
+            {
+                //memcpy (config_infor_now.mqtt_user, "FireSafe", strlen ("FireSafe"));
+                internal_flash_nvs_write_string (string_key, "FireSafe");
+            }
+            else if (mqtt_config_list == MQTT_PW)
+            {
+                //memcpy (config_infor_now.mqtt_pass, "FireSafe1929283", strlen ("FireSafe1929283"));
+                internal_flash_nvs_write_string (string_key, "FireSafe1929283");
+            }
+            else if (mqtt_config_list == PHONE_NUM_1)
+            {
+                //memcpy (config_infor_now.userPhoneNumber1, "0000000000", 10);
+                internal_flash_nvs_write_string (string_key, "0000000000");
+            }
+            else if (mqtt_config_list == PHONE_NUM_2)
+            {
+                //memcpy (config_infor_now.userPhoneNumber2, "0000000000", 10);
+                internal_flash_nvs_write_string (string_key, "0000000000");
+            }
+            else if (mqtt_config_list == PHONE_NUM_3)
+            {
+                //memcpy (config_infor_now.userPhoneNumber3, "0000000000", 10);
+                internal_flash_nvs_write_string (string_key, "0000000000");
+            }
+            else if (mqtt_config_list == DNS_NAME)
+            {
+                //memcpy (config_infor_now.httpDnsName, "btwork.bytechjsc.vn/api/server-info", strlen ("btwork.bytechjsc.vn/api/server-info"));
+                internal_flash_nvs_write_string (string_key, "btwork.bytechjsc.vn/api/server-info");
+            }
+            else if (mqtt_config_list == DNS_USER)
+            {
+                //memcpy (config_infor_now.httpUsername, "esp32_smart_module", strlen ("esp32_smart_module"));
+                internal_flash_nvs_write_string (string_key, "btwork.bytechjsc.vn/api/server-info");
+            }
+            else if (mqtt_config_list == DNS_PASS)
+            {
+                //memcpy (config_infor_now.httpDnsPass, "ZmlyZS1zYWZlOmFiY2QxMjM0", strlen ("ZmlyZS1zYWZlOmFiY2QxMjM0"));
+                internal_flash_nvs_write_string (string_key, "ZmlyZS1zYWZlOmFiY2QxMjM0");
+            }
+            else if (mqtt_config_list == WIFI_NAME)
+            {
+                //memcpy (config_infor_now.wifiname, "BYTECH_T3", strlen ("BYTECH_T3"));
+                internal_flash_nvs_write_string (string_key, "BYTECH_T3");
+            }
+            else if (mqtt_config_list == WIFI_PASS)
+            {
+                //memcpy (config_infor_now.wifipass, "bytech@2020", strlen ("bytech@2020"));
+                internal_flash_nvs_write_string (string_key, "bytech@2020");
+            }
+            else if (mqtt_config_list == PING_MAIN_SERVER)
+            {
+                //memcpy (config_infor_now.pingMainServer, "www.google.com", strlen ("www.google.com"));
+                internal_flash_nvs_write_string (string_key, "www.google.com");
+            }
+            else if (mqtt_config_list == PING_BACKUP_SERVER)
+            {
+                //memcpy (config_infor_now.pingBackupServer, "www.google.com", strlen ("www.google.com"));
+                internal_flash_nvs_write_string (string_key, "www.google.com");
+            }
+            // ghi data vao flash
+            
+        }
+        break;
+    case INT_TYPE:
+        if (mqtt_config_list == CHARG_INTERVAL)
+        {
+            //config_infor_now.charg_interval = int_value;
+            internal_flash_nvs_write_u16 (string_key, 1000);
+        }
+        
+        if (mqtt_config_list == UNCHARG_INTERVAL)
+        {
+            //config_infor_now.uncharg_interval = int_value;
+            internal_flash_nvs_write_u16 (string_key, 3000);
+        }
+        
+        if (mqtt_config_list == SMOKE_WAKE)
+        {
+            //config_infor_now.smokeSensorWakeupInterval = int_value;
+            internal_flash_nvs_write_u16 (string_key, 2000);
+        }
+        
+        if (mqtt_config_list == SMOKE_HEARTBEAT)
+        {
+            //config_infor_now.smokeSensorHeartbeatInterval = int_value;
+            internal_flash_nvs_write_u16 (string_key, 3000);
+        }
+        
+        if (mqtt_config_list == SMOKE_THRESH)
+        {
+            ///config_infor_now.smokeSensorThresHole = int_value;
+            internal_flash_nvs_write_u16 (string_key, 20);
+        }
+        
+        if (mqtt_config_list == TEMPER_WAKE)
+        {
+            //config_infor_now.tempSensorWakeupInterval = int_value;
+            internal_flash_nvs_write_u16 (string_key, 2000);
+        }
+        
+        if (mqtt_config_list == TEMPER_HEARTBEAT)
+        {
+            //config_infor_now.tempSensorHeartbeatInterval = int_value;
+            internal_flash_nvs_write_u16 (string_key, 3000);
+        }
+
+        if (mqtt_config_list == TEMPER_THRESH)
+        {
+            //config_infor_now.tempThresHold = int_value;
+            internal_flash_nvs_write_u16 (string_key, 15);
+        }
+
+        
+        break;
+    case BOOL_TYPE:
+        if (mqtt_config_list == BUZZ_EN)
+        {
+            //config_infor_now.buzzerEnable = bool_value;
+            internal_flash_nvs_write_u8 (string_key, 1);
+        }
+        else if (mqtt_config_list == SYNC_ALARM)
+        {
+            //config_infor_now.syncAlarm = bool_value;
+            internal_flash_nvs_write_u8 (string_key, 0);
+        }
+        
+        break;
+    default:
+        break;
+    }
+}
+
+void internal_flash_store_default_config(void)
+{
+    type_of_mqtt_data_t type_of_process_data;
+    for (mqtt_config_list i = 0; i < MAX_CONFIG_HANDLE; i++)
+    {
+        type_of_process_data = get_type_of_data (i);
+        process_default_config_data (type_of_process_data, i);
+    }
+}
 
 type_of_mqtt_data_t get_type_of_data (mqtt_config_list mqtt_config_element)
 {
@@ -247,7 +409,8 @@ esp_err_t read_data_from_flash (void *data_read, uint16_t* byte_read, const char
         ret |= err;
     } else {
         ESP_LOGI(TAG, "OPEN OK");
-        esp_err_t err = nvs_get_blob(my_handle, key, data_read, (size_t *)byte_read);
+        err = nvs_get_blob (my_handle, key, data_read, (size_t *)byte_read);
+        //ESP_LOGI(TAG, "Error (%s) get NVS handle!\n", esp_err_to_name(err));
         ESP_LOGI(TAG, "get info");
         switch (err)
         {

@@ -93,7 +93,7 @@
 #define FIRMWARE_VERSION "0x01"
 #define HARDWARE_VERSION "0x01"
 
-#define DEFAULT_PROTOCOL WIFI_PROTOCOL
+#define DEFAULT_PROTOCOL GSM_4G_PROTOCOL
 
 #define EXAMPLE_PING_IP           "www.google.com"
 #define BACKUP_PING_IP            "www.google.com"
@@ -107,21 +107,21 @@
 #define CONFIG_EXAMPLE_SKIP_VERSION_CHECK 1
 #define UART_RINGBUFF_SIZE 1024
 
-#define EEPROM_HOST     HSPI_HOST
-#define PIN_NUM_MISO    18
-#define PIN_NUM_MOSI    23
-#define PIN_NUM_CLK     19
-#define PIN_NUM_CS 0     13
-
-extern char* key_table;
+// #define EEPROM_HOST     HSPI_HOST
+// #define PIN_NUM_MISO    18
+// #define PIN_NUM_MOSI    23
+// #define PIN_NUM_CLK     19
+// #define PIN_NUM_CS      13
 
 
 
 
 //NVS FLASH
 #define NVS_CONFIG_KEY "config_flash_region"
-#define NVS_DATA_PING "ping_data: %d"
-#define NVS_DATA_SENSOR "data_sensor: %d"
+#define NVS_DATA_PING "ping_data_%d"
+#define NVS_DATA_SENSOR "data_sensor_%d"
+#define NVS_SENSOR_DATA_CNT "sensor_count"
+
 static uint8_t ping_data_count_in_flash = 0;
 char ping_data_key [32];
 static uint8_t data_sensor_count_in_flash = 0;
@@ -133,7 +133,7 @@ static const char *TAG = "pppos_example";
 static EventGroupHandle_t event_group = NULL;
 static const int CONNECT_BIT = BIT0;
 static const int STOP_BIT = BIT1;
-static const int GOT_DATA_BIT = BIT2;
+//static const int GOT_DATA_BIT = BIT2;
 static const int MQTT_DIS_CONNECT_BIT = BIT3;
 static const int UPDATE_BIT = BIT4; 
 static const int MQTT_CONNECT_BIT = BIT5;
@@ -148,7 +148,7 @@ SemaphoreHandle_t GSM_Task_tearout;
 //extern void *modem_netif_adapter;
 // list netif
 extern esp_netif_t *wifi_netif;
-extern esp_netif_t *gsm_esp_netif;
+// extern esp_netif_t *gsm_esp_netif;
 esp_netif_t *eth_netif;
 
 extern EventGroupHandle_t s_wifi_event_group;
@@ -205,12 +205,12 @@ uint32_t mqtt_port;
 static char mqtt_username [64];
 static char mqtt_password [64];
 
-char heart_beat_topic_header [64];
-char fire_alarm_topic_header [64];
-char sensor_topic_header [64];
-char info_topic_header [64];
-char config_topic_header [64];
-char ota_header [64];
+static char heart_beat_topic_header [64];
+static char fire_alarm_topic_header [64];
+static char sensor_topic_header [64];
+static char info_topic_header [64];
+static char config_topic_header [64];
+static char ota_header [64];
 
 
 //min relate ble handle variable
@@ -595,8 +595,6 @@ void process_config_data (type_of_mqtt_data_t data_type, mqtt_config_list mqtt_c
     }
 }
 
-
-
 static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
 {
     esp_mqtt_client_handle_t client = event->client;
@@ -606,56 +604,6 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
     switch (event->event_id) {
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-        // //publish info
-        // info_device_t device_info;
-        // memcpy (device_info.imei, GSM_IMEI, sizeof (GSM_IMEI));
-        // memcpy (device_info.simIMEI, SIM_IMEI, sizeof(SIM_IMEI));
-        // sprintf(device_info.firmware, "%s", FIRMWARE_VERSION);
-        // sprintf(device_info.hardwareVersion, "%s", HARDWARE_VERSION);
-        // make_device_info_payload (device_info, mqtt_payload);
-        // if (mqtt_server_ready && header_subscribed)
-        // esp_mqtt_client_publish(mqtt_client, info_topic_header, (char*)mqtt_payload, 0, 0, 0);
-        // // truoc do can doc cau hinh ra tu flash
-        // ESP_LOGI (TAG, "READ CONFIG DATA FROM FLASH");
-        // // read_data_from_flash (&config_infor_now, sizeof (info_config_t), NVS_CONFIG_KEY);
-        // // send_current_config (config_infor_now);
-        
-        // esp_err_t err = ESP_OK;
-        // for (mqtt_config_list i = 0; i < MAX_CONFIG_HANDLE; i++)
-        // {
-        //     type_of_process_data = get_type_of_data (i);
-        //     err = read_config_data_from_flash (&config_infor_now, type_of_process_data, i);
-        //     if (err != ESP_OK)
-        //     {
-        //         make_key_to_store_type_in_nvs (string_key, i);
-        //         ESP_LOGI (TAG, "GOT ERR %d WHILE READING %s KEY", err, string_key);
-        //     }
-        // }
-        // send_current_config (config_infor_now);
-        // /*
-        //     quet data trong flash va gui len server
-        // */
-        // // fire_status_t status_store_inflash;
-        // // for (uint8_t i = 0; i < ping_data_count_in_flash; i++)
-        // // {
-        // //     sprintf (ping_data_key, NVS_DATA_PING, i);
-        // //     // read_data_from_flash (&status_store_inflash, sizeof (fire_status_t), ping_data_key);
-        // //     internal_flash_nvs_read_string (ping_data_key, mqtt_payload, sizeof (mqtt_payload));
-        // //     // make_fire_status_payload (status_store_inflash, (char *)mqtt_payload); // Bo truong temper va fireZone
-        // //     //esp_mqtt_client_publish (mqtt_client, heart_beat_topic_header, mqtt_payload, 0, 0, 0);
-        // // }
-        // ping_data_count_in_flash = 0; // reset after send all data in flash
-        // static sensor_info_t data_sensor_store_in_flash;
-        // for (uint8_t i = 1; i < data_sensor_count_in_flash + 1; i++)
-        // {
-        //     sprintf (data_sensor_key, NVS_DATA_SENSOR, i);
-        //     read_data_from_flash (&data_sensor_store_in_flash, sizeof (sensor_info_t), data_sensor_key);
-        //     internal_flash_nvs_read_string (data_sensor_key, mqtt_payload, sizeof (mqtt_payload));
-        //     make_sensor_info_payload (data_sensor_store_in_flash, (char *)mqtt_payload); // Bo truong temper va fireZone
-        //     if (mqtt_server_ready && header_subscribed)
-        //     esp_mqtt_client_publish (mqtt_client, sensor_topic_header, mqtt_payload, 0, 0, 0);
-        // }
-        // data_sensor_count_in_flash = 0; // reset after send all data in flash
         xEventGroupSetBits(event_group, MQTT_CONNECT_BIT);
         break;
     case MQTT_EVENT_DISCONNECTED:
@@ -666,29 +614,30 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
         ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
 
         //msg_id = esp_mqtt_client_publish(client, "/topic/esp-pppos", "esp32-pppos", 0, 0, 0);
-        ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+        ESP_LOGD(TAG, "sent publish successful, msg_id=%d", msg_id);
         break;
     case MQTT_EVENT_UNSUBSCRIBED:
         ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
         break;
     case MQTT_EVENT_PUBLISHED:
         ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
+        ESP_LOGD (TAG, "DATA PUNLISH: %s", event->data);
         break;
     case MQTT_EVENT_DATA:
         ESP_LOGI(TAG, "MQTT_EVENT_DATA");
         printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
         printf("DATA=%.*s\r\n", event->data_len, event->data);
-        xEventGroupSetBits(event_group, GOT_DATA_BIT);
-        if (strstr (event->topic, "/update") && (strstr (event->data, "begin")))
-        {
-            xEventGroupSetBits(event_group, UPDATE_BIT);
-            ESP_LOGI(TAG, "set bit update");
-            //=>> can check bit
-        }
+        //xEventGroupSetBits(event_group, GOT_DATA_BIT);
+        // if (strstr (event->topic, "/update") && (strstr (event->data, "begin")))
+        // {
+        //     xEventGroupSetBits(event_group, UPDATE_BIT);
+        //     ESP_LOGI(TAG, "set bit update");
+        //     //=>> can check bit
+        // }
         if ((strstr (event->topic, "/g2d/ota")))
         {
-            xEventGroupSetBits(event_group, MQTT_DIS_CONNECT_BIT);
-            ESP_LOGI(TAG, "set bit disconnect");
+            // xEventGroupSetBits(event_group, MQTT_DIS_CONNECT_BIT);
+            // ESP_LOGI(TAG, "set bit disconnect");
             if (strstr (event->data, "\"OTA\":0"))
             {
                 //update esp32
@@ -753,38 +702,11 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
                     }
                 }
             }
-
-            // memcpy (&config_infor_from_server, event->data, sizeof (info_config_from_server_t));
-            // memcpy (config_infor_now.topic_hr, config_infor_from_server.topic_hr, sizeof (config_infor_now.topic_hr));
-            // memcpy (config_infor_now.mqtt_add, config_infor_from_server.mqtt_add, sizeof (config_infor_now.topic_hr));
-            // memcpy (config_infor_now.mqtt_user, config_infor_from_server.mqtt_user, sizeof (config_infor_now.topic_hr));
-            // memcpy (config_infor_now.mqtt_pass, config_infor_from_server.mqtt_pass, sizeof (config_infor_now.topic_hr));
-            // memcpy (config_infor_now.userPhoneNumber1, config_infor_from_server.userPhoneNumber1, sizeof (config_infor_now.topic_hr));
-            // memcpy (config_infor_now.userPhoneNumber2, config_infor_from_server.userPhoneNumber2, sizeof (config_infor_now.topic_hr));
-            // memcpy (config_infor_now.userPhoneNumber3, config_infor_from_server.userPhoneNumber3, sizeof (config_infor_now.topic_hr));
-            // memcpy (config_infor_now.networkAddress, config_infor_from_server.networkAddress, sizeof (config_infor_now.topic_hr));
-            // config_infor_now.charg_interval = config_infor_from_server.charg_interval;
-            // config_infor_now.uncharg_interval = config_infor_from_server.uncharg_interval;
-            // config_infor_now.buzzerEnable = config_infor_from_server.buzzerEnable;
-            // config_infor_now.syncAlarm = config_infor_from_server.syncAlarm;
-            // config_infor_now.smokeSensorWakeupInterval = config_infor_from_server.smokeSensorWakeupInterval;
-            // config_infor_now.smokeSensorHeartbeatInterval = config_infor_from_server.smokeSensorHeartbeatInterval;
-            // config_infor_now.smokeSensorThresHole = config_infor_from_server.smokeSensorThresHole;
-            // config_infor_now.tempSensorHeartbeatInterval = config_infor_from_server.tempSensorHeartbeatInterval;
-            // config_infor_now.tempSensorWakeupInterval = config_infor_from_server.smokeSensorWakeupInterval;
-            // config_infor_now.tempThresHold = config_infor_from_server.tempThresHold;
-            // lưu lại - can luu vao flash
-            // esp_err_t err = write_data_to_flash (&config_infor_now, sizeof (info_config_t), NVS_CONFIG_KEY);
-            // ESP_LOGI (TAG, "Write config data to flash: %s", (err = ESP_OK) ? "Fail" : "OK");
-            // // doc ra tu flash
-            // ESP_LOGI (TAG, "Read config data from flash now");
-           // read_data_from_flash (&config_infor_now, sizeof (info_config_t), NVS_CONFIG_KEY);
             send_current_config (config_infor_now);
         }
 
         if (strstr (event->topic, "/bleConfigInfo"))/// CONFIG INFO GET FROM SERVER
         {
-            
             //ble_info_t ble_config_info;
             static ble_config_t ble_config;
             cJSON* netkey = NULL;
@@ -1018,81 +940,8 @@ void send_current_config (info_config_t config_infor_now)
     
     make_config_info_payload (config_infor_now, (char*)mqtt_payload);
     if (mqtt_server_ready && header_subscribed)
-    esp_mqtt_client_publish(mqtt_client, config_topic_header, (char*)mqtt_payload, 0, 0, 0);
+    esp_mqtt_client_publish(mqtt_client, config_topic_header, (char*)mqtt_payload, 0, 1, 0);
 }
-//******************************************* NVS PLACE *****************************///
-// void init_nvs_flash(void )
-// {
-//     esp_err_t err = nvs_flash_init();
-//     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-//         // NVS partition was truncated and needs to be erased
-//         // Retry nvs_flash_init
-//         ESP_ERROR_CHECK(nvs_flash_erase());
-//         err = nvs_flash_init();
-//     }
-//     ESP_ERROR_CHECK(err);
-// }
-
-// //  write data in flash
-// int32_t write_data_to_flash(void *data_write, size_t byte_write, const char* key)
-// {
-//     nvs_handle_t my_handle;
-//     esp_err_t ret = ESP_OK;
-//     //OPEN FLASH
-//     esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
-//     ret |= err;
-
-//     if (err != ESP_OK) {
-//         ESP_LOGI(TAG, "Error (%s) opening NVS handle!\n", esp_err_to_name(err));
-//         // ghi lại gia tri mac dinh và them version control
-//     } else {
-//         ESP_LOGI(TAG, "OPEN Done, Writing data to key %s\n", key);
-//         err = nvs_set_blob (my_handle, key, data_write, byte_write);
-//         ESP_LOGI(TAG, "%s", (err != ESP_OK) ? "Failed!" : "Done");
-//         ret |= err;
-
-//         ESP_LOGI(TAG, "\tCommitting updates string in NVS ... ");
-//         err = nvs_commit(my_handle);
-//         ESP_LOGI(TAG, "%s", (err != ESP_OK) ? "Failed!" : "Done");
-//         ret |= err; 
-
-//         nvs_close(my_handle);
-//     }
-//     return ret;
-// }
-
-// //read data blob from flash
-// esp_err_t read_data_from_flash (void *data_read, uint16_t byte_read, const char* key)
-// {
-//     nvs_handle_t my_handle;
-//     esp_err_t ret = ESP_OK;
-//     esp_err_t err = nvs_open("storage", NVS_READONLY, &my_handle);
-//     if (err != ESP_OK) {
-//         ESP_LOGI(TAG, "Error (%s) opening NVS handle!\n", esp_err_to_name(err));
-//         ret |= err;
-//     } else 
-//     {
-//         esp_err_t err = nvs_get_blob(my_handle, key, data_read, (size_t*)&byte_read);
-//         switch (err)
-//         {
-//         case ESP_OK:
-//             break;
-
-//         case ESP_ERR_NVS_NOT_FOUND:
-//             ESP_LOGW(TAG, "Key %s not found", key);
-//             ret |= err;
-//             break;
-
-//         default:
-//             ESP_LOGE(TAG, "Error (%s) reading key %s!", esp_err_to_name(err), key);
-//             ret |= err;
-//             break;
-//         }
-//         nvs_close(my_handle);
-//     }
-//     //m_err_code = err;
-//     return ret;
-// }
 
 //Callback for user tasks created in app_main()
 void reset_task(void *arg)
@@ -1120,16 +969,6 @@ void change_protocol_using_to (protocol_type protocol)
         protocol_using = DEFAULT_PROTOCOL;
     }
 }
-
-// void handle_uart_data_task(void)
-// {
-//     uint8_t* data = (uint8_t*)malloc (10);
-//     if (lwrb_read (&data_uart_module_rb, data, 10))
-//     {
-//         min_rx_feed(&m_min_context, data, 10);
-//     }
-//     free(data);
-// }
 
 uint32_t sys_get_ms(void)
 {
@@ -1161,34 +1000,71 @@ bool check_mac_data (char * mac)
         return false;
     }
 }
-
-static uint32_t last_time_stamp = 0;
-static uint8_t last_status = 0;
+// handle var need
+sensor_info_in_flash_t data_sensor_write;
+sensor_info_in_flash_t data_sensor_read;
+uint16_t byte_read_from_flash;
 
 void handle_sensor_data_while_lost_connection (sensor_info_t* sensor_info)
-{
-    static sensor_info_t data_sensor_read;
-    for (uint16_t i = 0; i < data_sensor_count_in_flash; i++)
+{  
+    internal_flash_nvs_get_u16 (NVS_SENSOR_DATA_CNT, &data_sensor_count_in_flash);
+    if (data_sensor_count_in_flash)
     {
-        sprintf (data_sensor_key, NVS_DATA_SENSOR, i);
-        err = read_data_from_flash (&data_sensor_read, sizeof (sensor_info_t), data_sensor_key);
-        if (err == ESP_OK)
+        
+        for (uint16_t i = 1; i < data_sensor_count_in_flash + 1; i++)
         {
-            if ((sensor_info->status != last_status) || ((sensor_info->updateTime - last_time_stamp) > 60))
+            sprintf (data_sensor_key, NVS_DATA_SENSOR, i);
+            ESP_LOGI (TAG, "Key SENSOR INFO IN FLASH: %s", data_sensor_key);
+            
+            byte_read_from_flash = sizeof (sensor_info_in_flash_t);
+            err = read_data_from_flash (&data_sensor_read, &byte_read_from_flash, data_sensor_key);
+            ESP_LOGI (TAG, "READ SENSOR DATA");
+            if (err == ESP_OK)
             {
-                write_data_to_flash (sensor_info, sizeof (sensor_info_t), data_sensor_key);
+                if (!(memcmp (data_sensor_read.sensor_info.mac, sensor_info->mac, sizeof (data_sensor_read.sensor_info.mac))))
+                {
+                    ESP_LOGW (TAG, "SENSOR MAC STILL THE SAME");
+                    if ((sensor_info->status != data_sensor_read.last_status) || ((sensor_info->updateTime - data_sensor_read.last_updateTime) > 10))
+                    {
+                        ESP_LOGI (TAG, "CHANGED STATUS OR PASS 10 SECOND");
+                        data_sensor_write.last_status = sensor_info->status;
+                        data_sensor_write.last_updateTime = sensor_info->updateTime;
+                        memcpy (&(data_sensor_write.sensor_info), sensor_info, sizeof (sensor_info_t));
+                        err = write_data_to_flash (&data_sensor_write, sizeof (sensor_info_in_flash_t), data_sensor_key);
+                        if (err != ESP_OK)
+                        {
+                            ESP_LOGE (TAG, "WRITE DATA TO FLASH FAIL");
+                        }
+                    }
+                }
+                else
+                {
+                    continue;
+                }
             }
-            else
+            else if (err == ESP_ERR_NVS_NOT_FOUND) //meet this when i = data_count_in_flash +1
             {
-                continue;
+                data_sensor_count_in_flash++;
+                sprintf (data_sensor_key, NVS_DATA_SENSOR, data_sensor_count_in_flash);
+                internal_flash_nvs_write_u16 (NVS_SENSOR_DATA_CNT, data_sensor_count_in_flash);
+                data_sensor_write.last_status = sensor_info->status;
+                data_sensor_write.last_updateTime = sensor_info->updateTime;
+                memcpy (&(data_sensor_write.sensor_info), sensor_info, sizeof (sensor_info_t));
+                write_data_to_flash (&data_sensor_write, sizeof (sensor_info_in_flash_t), data_sensor_key);
             }
         }
-        else if (err == ESP_ERR_NVS_NOT_FOUND)
-        {
-            data_sensor_count_in_flash++;
-            sprintf (data_sensor_key, NVS_DATA_SENSOR, data_sensor_count_in_flash);
-            write_data_to_flash (sensor_info, sizeof (sensor_info_t), data_sensor_key);
-        }
+    }
+    else
+    {
+        
+        data_sensor_count_in_flash++;
+        sprintf (data_sensor_key, NVS_DATA_SENSOR, data_sensor_count_in_flash);
+        internal_flash_nvs_write_u16 (NVS_SENSOR_DATA_CNT, data_sensor_count_in_flash);
+        data_sensor_write.last_status = sensor_info->status;
+        data_sensor_write.last_updateTime = sensor_info->updateTime;
+        memcpy (&(data_sensor_write.sensor_info), sensor_info, sizeof (sensor_info_t));
+        ESP_LOGI (TAG, "THERE NO SENSOR INFO IN FLASH");
+        write_data_to_flash (&data_sensor_write, sizeof (sensor_info_in_flash_t), data_sensor_key);
     }
 }
 
@@ -1309,26 +1185,6 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
         make_sensor_info_payload (sensor_info, (char *)mqtt_payload);
         ESP_LOGI (TAG, "SENSOR PAYLOAD: %s", (char *)mqtt_payload);
 
-        // if ((sensor_info.status != last_status) && (!(gsm_started && wifi_started && eth_started))) // no network and change status
-        // {
-        //     last_status = sensor_info.status;
-        //     data_sensor_count_in_flash++;
-        //     sprintf (data_sensor_key, NVS_DATA_SENSOR, data_sensor_count_in_flash);
-        //     //err = internal_flash_nvs_write_string (data_sensor_key, mqtt_payload);
-        //     err = write_data_to_flash (&sensor_info, sizeof (sensor_info_t), data_sensor_key);
-        //     ESP_LOGI (TAG, "Write sensor data to flash because there are may fire: %s", (err = ESP_OK) ? "Fail" : "OK");
-        // }
-
-        // if ((!(gsm_started && wifi_started && eth_started)) && ((sensor_info.updateTime - last_time_stamp) > 60))
-        // {
-        //     last_time_stamp = sensor_info.updateTime;
-            
-        //     data_sensor_count_in_flash++;
-        //     sprintf (data_sensor_key, NVS_DATA_SENSOR, data_sensor_count_in_flash);
-        //     //err = internal_flash_nvs_write_string (data_sensor_key, mqtt_payload);
-        //     err = write_data_to_flash (&sensor_info, sizeof (sensor_info_t), data_sensor_key);
-        //     ESP_LOGI (TAG, "Write sensor data to flash: %s", (err = ESP_OK) ? "Fail" : "OK");
-        // }
         if (protocol_using == PROTOCOL_NONE)
         {
             ESP_LOGI (TAG, "NO NETWORK CONNECTION, WRITE DATA TO FLASH");
@@ -1339,8 +1195,8 @@ void min_rx_callback(void *min_context, min_msg_t *frame)
             ESP_LOGI (TAG, "server ok: %d, header ok: %d", mqtt_server_ready, header_subscribed);
             if (mqtt_server_ready && header_subscribed)
             {
-                ESP_LOGI (TAG, "PUBLISH PAYLOAD TO MQTT");
-                esp_mqtt_client_publish (mqtt_client, sensor_topic_header, (char*) mqtt_payload, 0, 0, 0); //only send when network is started
+                ESP_LOGI (TAG, "PUBLISH PAYLOAD TO MQTT WITH HEADER: %s", sensor_topic_header);
+                esp_mqtt_client_publish (mqtt_client, sensor_topic_header, (char*) mqtt_payload, 0, 1, 0); //only send when network is started
             }   
         }
         break;
@@ -1413,56 +1269,6 @@ void build_min_tx_data_for_spi(min_msg_t* min_msg, uint8_t* data_spi, uint8_t si
     min_msg->len = size;
 }
 
-// void deinit_interface (protocol_type protocol)
-// {
-//     switch (protocol)
-//     {
-//     case WIFI_PROTOCOL:
-//             esp_mqtt_client_destroy(mqtt_client);
-//             ESP_LOGI(TAG, "destroy mqtt");
-//             esp_wifi_stop();
-//             wifi_started = false;
-//         break;
-//     case ETHERNET_PROTOCOL:
-//             esp_mqtt_client_destroy(mqtt_client);
-//             ESP_ERROR_CHECK(esp_eth_stop(eth_handle));
-//             eth_started = false; 
-//             ESP_LOGI(TAG, "destroy mqtt");
-//         break;
-//     case GSM_4G_PROTOCOL:
-//             esp_mqtt_client_destroy(mqtt_client);
-//             ESP_LOGI(TAG, "destroy mqtt");
-//             /* Exit PPP mode */
-//             ESP_ERROR_CHECK(esp_modem_stop_ppp(dte));
-//             gsm_started = false;
-//             ESP_LOGI(TAG, "ppp stop");
-//             xEventGroupWaitBits(event_group, STOP_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
-// #if CONFIG_EXAMPLE_SEND_MSG
-//             const char *message = "Welcome to ESP32!";
-//             ESP_ERROR_CHECK(example_send_message_text(dce, CONFIG_EXAMPLE_SEND_MSG_PEER_PHONE_NUMBER, message));
-//             ESP_LOGI(TAG, "Send send message [%s] ok", message);
-// #endif
-//             /* Power down module */
-//             if (dce != NULL)
-//             {
-//                 ESP_ERROR_CHECK(dce->power_down(dce));
-//                 ESP_LOGI(TAG, "Power down");
-//                 ESP_ERROR_CHECK(dce->deinit(dce)); //deinit
-//             }
-//             if (esp_modem_netif_clear_default_handlers(modem_netif_adapter) == ESP_OK)
-//             {
-//                 ESP_LOGI ("UNREGISTER", "CLEAR TO REINIT");
-//             }
-//             esp_modem_netif_teardown(modem_netif_adapter);
-//             esp_netif_destroy(esp_netif);
-//             ESP_LOGI ("UNREGISTER", "CLEAR TO REINIT");
-//         break;
-//     default:
-//         ESP_LOGE (TAG, "UNHANDLABLE PROTOCOL DEINIT");
-//         break;
-//     }
-// }
-
 // app cli function
 void cli_cdc_tx(uint8_t *buffer, uint32_t size)
 {
@@ -1475,30 +1281,6 @@ int cli_cdc_puts(const char *msg)
     uart_write_bytes(UART_NUM_1 ,msg, len);
 	return len;
 }
-
-// void handle_mutinetif()
-// {
-//     esp_netif_t *netifs[3]; // there are 3 netif to handle
-//     netifs[0] = gsm_esp_netif;
-//     netifs[1] = wifi_netif;
-//     netifs[2] = eth_netif;
-
-//     for (int i; i < 3; i++)
-//     {
-//         esp_netif_action_start(netifs[i], 0, 0, 0);
-//         esp_netif_action_connected(netifs[i], 0, 0, 0);
-//     }
-//     assert(esp_netif_get_netif_impl(netifs[0]), netif_default);
-
-// }
-
-// typedef enum 
-// {
-//     GSM_NETIF,
-//     ETH_NETIF,
-//     WIFI_NETIF, 
-//     NO_NETIF
-// } network_netif;
 
 static bool is_our_netif(const char *prefix, esp_netif_t *netif)
 {
@@ -1523,72 +1305,6 @@ esp_err_t get_interface_status (void)
     
     return ESP_OK;
 }
-
-// static network_netif check_and_update_default_netif (void)
-// {
-//     network_netif netif_now;
-//     if (gsm_started)
-//     {
-//         netif_now = GSM_NETIF;
-//     }
-//     else if (eth_started)
-//     {
-//         netif_now = ETH_NETIF;
-//     }
-//     else if (wifi_started)
-//     {
-//         netif_now = WIFI_NETIF;
-//     }
-//     else
-//     {
-//         netif_now = NO_NETIF;
-//     }
-//     return netif_now;
-// }
-
-// static void task_init_modem(void *arg)
-// {
-//     //    ESP_ERROR_CHECK(esp_netif_init());
-//     //    ESP_ERROR_CHECK(esp_event_loop_create_default());
-//     //    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &on_ip_event, NULL));
-//     //    ESP_ERROR_CHECK(esp_event_handler_register(NETIF_PPP_STATUS, ESP_EVENT_ANY_ID, &on_ppp_changed, NULL));
-
-//     esp_modem_dte_config_t dte_config = ESP_MODEM_DTE_DEFAULT_CONFIG();
-//     /* setup UART specific configuration based on kconfig options */
-
-//     dte_config.tx_io_num = GPIO_TX0;
-//     dte_config.rx_io_num = GPIO_RX0;
-//     dte_config.rts_io_num = 0;
-//     dte_config.cts_io_num = 0;
-//     dte_config.rx_buffer_size = CONFIG_EXAMPLE_MODEM_UART_RX_BUFFER_SIZE;
-//     dte_config.tx_buffer_size = CONFIG_EXAMPLE_MODEM_UART_TX_BUFFER_SIZE;
-//     dte_config.event_queue_size = CONFIG_EXAMPLE_MODEM_UART_EVENT_QUEUE_SIZE;
-//     dte_config.event_task_stack_size = 4096;
-//     dte_config.event_task_priority = CONFIG_EXAMPLE_MODEM_UART_EVENT_TASK_PRIORITY;
-//     dte_config.dte_buffer_size = CONFIG_EXAMPLE_MODEM_UART_RX_BUFFER_SIZE / 2;
-    
-//     dte = esp_modem_dte_init(&dte_config);
-//     if (dte == NULL)
-//     {
-//         ESP_LOGI (TAG, "DTE INIT FAIL");
-//     }
-//     dte = esp_modem_dte_init(&dte_config);
-//     if (!dte)
-//     {
-//         ESP_LOGE(TAG, "Create moderm evt failed\r\n");
-//     }
-//     ESP_ERROR_CHECK(esp_modem_add_event_handler(dte, modem_event_handler, NULL));
-//     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &modem_event_handler, NULL));
-//     //	ESP_ERROR_CHECK(esp_modem_set_event_handler(m_dte, modem_event_handler, ESP_MODEM_EVENT_UNKNOWN, NULL));
-//     //  ESP_ERROR_CHECK(esp_modem_set_event_handler(m_dte, modem_event_handler, ESP_EVENT_ANY_ID, NULL));
-
-//     dce = ec2x_init(dte);
-//     vTaskDelete(NULL);
-// }
-
-
-
-
 
 void app_main(void)
 {
@@ -1670,17 +1386,16 @@ void app_main(void)
     //     {
     //         send_min_data ((min_msg_t*) &ping_min_msg_nonsen);
     //         ESP_LOGI (TAG, "prepare to reset now");
-           
     //     }
     //     else
     //     {
     //         send_min_data ((min_msg_t*) &ping_min_msg);
     //         ESP_LOGI (TAG, "Send ping requesst");
-    //     }
-        
+    //     }       
     //     vTaskDelay(100 / portTICK_PERIOD_MS);
     // }
-
+    internal_flash_store_default_config ();
+    ESP_LOGI (TAG, "STORE DEFAULT CONFIG INFO");
     /* create dte object */
     esp_modem_dte_config_t dte_config = ESP_MODEM_DTE_DEFAULT_CONFIG();
     /* setup UART specific configuration based on kconfig options */
@@ -1722,16 +1437,11 @@ void app_main(void)
         send_min_data ((min_msg_t*) &ping_min_msg);
         vTaskDelay (2000/portTICK_RATE_MS);
     }
-/*  uncomment this if there are no need gsm_task
-    // Init netif object
-    esp_netif_config_t cfg = ESP_NETIF_DEFAULT_PPP();
-    esp_netif_t *esp_netif = esp_netif_new(&cfg);
-    assert(esp_netif);
-    void *modem_netif_adapter;
-*/
+
     //init gsm
-    // if(dce == NULL)
-    // dce = ec2x_init (dte);
+    if(dce == NULL)
+    dce = ec2x_init (dte);
+    vTaskDelay (1000 / portTICK_RATE_MS);
     
     EventBits_t ubits;
 
@@ -1784,69 +1494,61 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &got_ip_event_handler, NULL)); // FOR IP
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_LOST_IP, &got_ip_event_handler, NULL)); // FOR IP
 
-    // ESP_LOGI (TAG, "BEGIN WIFI");
-    // app_wifi_connect (wifi_name, wifi_pass);
-    // EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
-    //                                        WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-    //                                        pdFALSE,
-    //                                        pdFALSE,
-    //                                        50000);
-    // if (bits & WIFI_CONNECTED_BIT)
-    // {
-    //     ESP_LOGI (TAG, "WIFI CONNECT");
-    //     ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
-    //             CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
-    //     wifi_started = true;
-    //     protocol_using = WIFI_PROTOCOL;
-    // }
-    // else if (bits & WIFI_FAIL_BIT)
-    // {
-    //     ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
-    //             CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
-    //     wifi_started = false;
-    //     protocol_using = ETHERNET_PROTOCOL;
-    // }
-    // else
-    // {
-    //     wifi_started = false;
-    //     ESP_LOGE(TAG, "UNEXPECTED WIFI EVENT");
-    // }
+    ESP_LOGI (TAG, "BEGIN WIFI");
+    app_wifi_connect (wifi_name, wifi_pass);
+    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
+                                           WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+                                           pdFALSE,
+                                           pdFALSE,
+                                           50000);
+    if (bits & WIFI_CONNECTED_BIT)
+    {
+        ESP_LOGI (TAG, "WIFI CONNECT");
+        ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
+                CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
+        wifi_started = true;
+        protocol_using = WIFI_PROTOCOL;
+    }
+    else if (bits & WIFI_FAIL_BIT)
+    {
+        ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
+                CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
+        wifi_started = false;
+        protocol_using = ETHERNET_PROTOCOL;
+    }
+    else
+    {
+        wifi_started = false;
+        ESP_LOGE(TAG, "UNEXPECTED WIFI EVENT");
+    }
     
-    // // if (wifi_started == false)
-    // // {
-    // //     ESP_ERROR_CHECK(esp_eth_start (eth_handle)); //start ethenet 
-    // //     ESP_LOGI (TAG, "ETH CONNECT");
-    // // }
+    // if (wifi_started == false)
+    // {
+    //     ESP_ERROR_CHECK(esp_eth_start (eth_handle)); //start ethenet 
+    //     ESP_LOGI (TAG, "ETH CONNECT");
+    // }
 
-    // do_ping_cmd();//pinging to addr
+    do_ping_cmd();//pinging to addr
 
-    // // ESP_ERROR_CHECK(esp_task_wdt_reset());
-    // //init testing applications
-    // EventBits_t uxBitsPing = xEventGroupWaitBits(s_wifi_event_group, WIFI_PING_TIMEOUT | WIFI_PING_SUCESS, pdTRUE, pdFALSE, portMAX_DELAY);
-    // if (uxBitsPing & WIFI_PING_TIMEOUT)
-    // {
-    //     ESP_LOGI (TAG, "PING TIMEOUT");
-    //     protocol_using = ETHERNET_PROTOCOL;
-    // }
-    // else if (uxBitsPing & WIFI_PING_SUCESS)
-    // {
-    //     ESP_LOGI (TAG, "PING OK");
-    // }
-    // else
-    // {
-    //     ESP_LOGI (TAG, "PING UNEXPECTED EVENT");
-    // }
+    // ESP_ERROR_CHECK(esp_task_wdt_reset());
+    //init testing applications
+    EventBits_t uxBitsPing = xEventGroupWaitBits(s_wifi_event_group, WIFI_PING_TIMEOUT | WIFI_PING_SUCESS, pdTRUE, pdFALSE, portMAX_DELAY);
+    if (uxBitsPing & WIFI_PING_TIMEOUT)
+    {
+        ESP_LOGI (TAG, "PING TIMEOUT");
+        protocol_using = ETHERNET_PROTOCOL;
+    }
+    else if (uxBitsPing & WIFI_PING_SUCESS)
+    {
+        ESP_LOGI (TAG, "PING OK");
+    }
+    else
+    {
+        ESP_LOGI (TAG, "PING UNEXPECTED EVENT");
+    }
     
     mqtt_info_struct mqtt_broker_str;
-    // ESP_ERROR_CHECK(esp_task_wdt_reset());
-    //test mqtt now 
-    // mqtt_config.uri = "mqtt://mqtt.eclipse.org:1883";
-    // mqtt_config.event_handle = mqtt_event_handler;
-        
-    // mqtt_client = esp_mqtt_client_init(&mqtt_config);
-    // esp_mqtt_client_start(mqtt_client);
 
-    //end test mqtt broker
     if (mqtt_server_ready == false)
     {
         ESP_LOGI (TAG, "MQTT INIT START");
@@ -2020,8 +1722,13 @@ void app_main(void)
 
         //if (memcmp (GSM_IMEI, "0000000000000000", 16) != 0)
         EventBits_t uxBits = xEventGroupWaitBits(event_group, MQTT_CONNECT_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
-        if (/*got_gsm_imei &&*/ mqtt_server_ready && (!header_subscribed))
+        ESP_LOGW (TAG, "WAIT MQTT CONNECTED EVENT SUCCESS");
+        if (got_gsm_imei && mqtt_server_ready && (!header_subscribed))
         {
+            memset (GSM_IMEI, '0', sizeof (GSM_IMEI));
+#warning "need remove memset"
+            ESP_LOGI (TAG, "RESET ALL HEADER");
+
             make_mqtt_topic_header (HEART_BEAT_HEADER, "smart_module", GSM_IMEI, heart_beat_topic_header);
             int msg_id = esp_mqtt_client_subscribe(mqtt_client, heart_beat_topic_header, 0);
             ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
@@ -2089,27 +1796,28 @@ void app_main(void)
                 /*
                     quet data trong flash va gui len server
                 */
-                // fire_status_t status_store_inflash;
-                // for (uint8_t i = 0; i < ping_data_count_in_flash; i++)
-                // {
-                //     sprintf (ping_data_key, NVS_DATA_PING, i);
-                //     // read_data_from_flash (&status_store_inflash, sizeof (fire_status_t), ping_data_key);
-                //     internal_flash_nvs_read_string (ping_data_key, mqtt_payload, sizeof (mqtt_payload));
-                //     // make_fire_status_payload (status_store_inflash, (char *)mqtt_payload); // Bo truong temper va fireZone
-                //     //esp_mqtt_client_publish (mqtt_client, heart_beat_topic_header, mqtt_payload, 0, 0, 0);
-                // }
-                ping_data_count_in_flash = 0; // reset after send all data in flash
-                static sensor_info_t data_sensor_store_in_flash;
+                static sensor_info_in_flash_t data_sensor_store_in_flash;
+                static uint16_t byte_read_from_flash;
+                byte_read_from_flash = sizeof (sensor_info_in_flash_t);
+
+                internal_flash_nvs_get_u16 (NVS_SENSOR_DATA_CNT, &data_sensor_count_in_flash);
+                ESP_LOGI (TAG, "DATA IN FLASH NOW: %d", data_sensor_count_in_flash);
                 for (uint8_t i = 1; i < data_sensor_count_in_flash + 1; i++)
                 {
                     sprintf (data_sensor_key, NVS_DATA_SENSOR, i);
-                    read_data_from_flash (&data_sensor_store_in_flash, sizeof (sensor_info_t), data_sensor_key);
-                    internal_flash_nvs_read_string (data_sensor_key, mqtt_payload, sizeof (mqtt_payload));
-                    make_sensor_info_payload (data_sensor_store_in_flash, (char *)mqtt_payload); // Bo truong temper va fireZone
+                    read_data_from_flash (&data_sensor_store_in_flash, &byte_read_from_flash, data_sensor_key);
+                    make_sensor_info_payload (data_sensor_store_in_flash.sensor_info, (char *)mqtt_payload); // Bo truong temper va fireZone
+                    ESP_LOGI (TAG, "FLASH PAYLOAD NOW: %s", mqtt_payload);
                     if (mqtt_server_ready && header_subscribed)
-                    esp_mqtt_client_publish (mqtt_client, sensor_topic_header, mqtt_payload, 0, 0, 0);
+                    {
+                        static int res;
+                        res = esp_mqtt_client_publish (mqtt_client, sensor_topic_header, mqtt_payload, 0, 1, 0);
+                        ESP_LOGI (TAG, "PUBLISH NOW, res = %d",  res);
+                    }
+                    
                 }
                 data_sensor_count_in_flash = 0; // reset after send all data in flash
+                internal_flash_nvs_write_u16 (NVS_SENSOR_DATA_CNT, data_sensor_count_in_flash);
             }
 
             if (got_gsm_imei && mqtt_server_ready && (!header_subscribed))
@@ -2148,15 +1856,18 @@ void app_main(void)
             }
 
             // ESP_ERROR_CHECK(esp_task_wdt_reset());
-            uxBits = xEventGroupWaitBits(event_group, MQTT_DIS_CONNECT_BIT, pdTRUE, pdTRUE, 5/ portTICK_RATE_MS); // piority check disconnected event
-            if ( (uxBits & MQTT_DIS_CONNECT_BIT) == MQTT_DIS_CONNECT_BIT)
-            {
-                ESP_LOGI (TAG, "mqtt disconnected bitrev");
-                vTaskDelay(5 / portTICK_PERIOD_MS);
-                //check if there are any interface to save data in flash
-                //mqtt_server_ready = false;
-                break;
-            }
+            
+            /* no need check mqtt disconnected bit*/
+            // uxBits = xEventGroupWaitBits(event_group, MQTT_DIS_CONNECT_BIT, pdTRUE, pdTRUE, 5/ portTICK_RATE_MS); // piority check disconnected event
+            // if ( (uxBits & MQTT_DIS_CONNECT_BIT) == MQTT_DIS_CONNECT_BIT)
+            // {
+            //     ESP_LOGI (TAG, "mqtt disconnected bitrev");
+            //     vTaskDelay(5 / portTICK_PERIOD_MS);
+            //     //check if there are any interface to save data in flash
+            //     //mqtt_server_ready = false;
+            //     break;
+            // }
+
             uint32_t timestamp_now = app_time();
             //need send it to gd32
             static esp_status_infor_t  esp_status_infor;
@@ -2230,7 +1941,6 @@ void app_main(void)
             // ESP_LOGI (TAG, "last time: %u", last_tick_cnt);
             if ((now - last_tick_cnt) > 500)
             {
-                
                 // ping gd32 while being alive
                 send_min_data ((min_msg_t*) &ping_min_msg);
                 last_tick_cnt = now;
@@ -2283,21 +1993,9 @@ void app_main(void)
                     break;
                 }
             }
-
-            /*
-                lấy thông tin từ mqtt gửi xuống ble
-                định kì nhận bản tin heartbeat gửi lên topic
-                lấy đc IMEI thiết bị check sim các kiểu
-                xử lí trường hợp server chết
-            */
            vTaskDelay (500/portTICK_RATE_MS);
-        }
-        //deinit after get out of loop to reinit in new loop
-
-
-        //deinit_interface (protocol_using);
+        }   
     }
-//    ESP_ERROR_CHECK(dte->deinit(dte));
 }
 
 

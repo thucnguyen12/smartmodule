@@ -41,6 +41,8 @@
 #define MODEM_MAX_ACCESS_TECH_STR_LEN   64
 #define MODEM_MAX_NETWORK_BAND_STR_LEN  64
 
+esp_netif_t *gsm_esp_netif = NULL;
+void *modem_netif_adapter = NULL;
 
 extern min_context_t m_min_context;
 extern void send_min_data(min_msg_t *min_msg);
@@ -1337,30 +1339,32 @@ static void gsm_manager_task(void *arg)
 
 							/* Setup PPP environment */
 							ESP_LOGI(TAG, "Start ppp\r\n");
-							assert(ESP_OK == esp_modem_setup_ppp(ec2x_dce->parent.dte));
-                            // esp_netif_ip_info_t ip_info;
-                            // esp_netif_inherent_config_t netif_gsm_config = ESP_NETIF_INHERENT_DEFAULT_PPP();
-                            // netif_gsm_config.route_prio = 3;
-                            // netif_gsm_config.if_desc = "netif_gsm";
-                            // esp_netif_config_t cfg = {
-                            //     .base = &netif_gsm_config,// use specific behaviour configuration
-                            //     .driver = NULL,                 
-                            //     .stack = ESP_NETIF_NETSTACK_DEFAULT_PPP, // use default WIFI-like network stack configuration
-                            // };
-                            // gsm_esp_netif = esp_netif_new(&cfg);
-                            // assert(gsm_esp_netif);
-                            // void *modem_netif_adapter = esp_modem_netif_setup(ec2x_dce->parent.dte);
-                            // ESP_LOGI(TAG, "netif init");
-                            // if(esp_modem_netif_set_default_handlers(modem_netif_adapter, gsm_esp_netif) == ESP_OK)
-                            // {
-                            //     ESP_LOGI(TAG, "register handler");
-                            // }
-                            // /* attach the modem to the network interface */
-                            // if (esp_netif_attach(gsm_esp_netif, modem_netif_adapter) == ESP_OK)
-                            // {
-                            //     ESP_LOGI (TAG, "NETIF ATTACK OK");
-                            // }
-                            goto end;
+							//assert(ESP_OK == esp_modem_setup_ppp(ec2x_dce->parent.dte));
+
+                            esp_netif_inherent_config_t netif_gsm_config = ESP_NETIF_INHERENT_DEFAULT_PPP();
+                            netif_gsm_config.route_prio = 3;
+                            netif_gsm_config.if_desc = "netif_gsm";
+                            esp_netif_config_t cfg = {
+                                .base = &netif_gsm_config,// use specific behaviour configuration
+                                .driver = NULL,                 
+                                .stack = ESP_NETIF_NETSTACK_DEFAULT_PPP, // use default WIFI-like network stack configuration
+                            };
+                            gsm_esp_netif = esp_netif_new(&cfg);
+                            assert(gsm_esp_netif);
+                            modem_netif_adapter = esp_modem_netif_setup(ec2x_dce->parent.dte);
+                            ESP_LOGI(TAG, "netif init");
+                            if(esp_modem_netif_set_default_handlers(modem_netif_adapter, gsm_esp_netif) == ESP_OK)
+                            {
+                                ESP_LOGI(TAG, "register handler");
+                            }
+                            /* attach the modem to the network interface */
+                            if (esp_netif_attach(gsm_esp_netif, modem_netif_adapter) == ESP_OK)
+                            {
+                                ESP_LOGI (TAG, "NETIF ATTACK OK");
+                            }
+                            
+                            ESP_LOGI("EC2x", "\t\t\r\n--- gsm_manager_task is exit ---");
+                            vTaskDelete();
 	                        // assert(ESP_OK == esp_modem_start_ppp(ec2x_dce->parent.dte));
 						}
 						else
@@ -1391,13 +1395,10 @@ static void gsm_manager_task(void *arg)
             	ESP_LOGE(TAG, "Unknown step %u\r\n", gsm_init_step);
                 break;
             }
+            vTaskDelay(1000 / portTICK_RATE_MS);
         }
-        vTaskDelay(1000 / portTICK_RATE_MS);
+        
     }
-
-    end:
-    ESP_LOGI("EC2x", "\t\t\r\n--- gsm_manager_task is exit ---");
-    vTaskDelete(NULL);
 }
 
 //static void gsm_manager_task(void *arg)
