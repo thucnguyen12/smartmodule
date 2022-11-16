@@ -144,16 +144,9 @@ err:
 static void esp_handle_uart_data(esp_modem_dte_t *esp_dte)
 {
     size_t length = 0;
-    uint8_t tmp_buffer [512];
     
     uart_get_buffered_data_len(esp_dte->uart_port, &length);
     ESP_LOGV(MODEM_TAG, "uart_get_buffered_data_len()=%d", length);
-// #warning "this only for debug after that we need remove following lines"
-//     uart_read_bytes (esp_dte->uart_port, tmp_buffer, length, 200000);
-//     for (uint8_t i = 0; i < length; i++)
-//     {
-//         app_cli_poll(tmp_buffer[i]);
-//     }
     if (esp_dte->parent.dce->mode != MODEM_PPP_MODE && length) {
         // Read the data and process it using `handle_line` logic
         length = MIN(esp_dte->buffer_size - 1, length);
@@ -497,16 +490,21 @@ err_dte_mem:
     return NULL;
 }
 
+esp_event_handler_instance_t instance;
+
 esp_err_t esp_modem_set_event_handler(modem_dte_t *dte, esp_event_handler_t handler, int32_t event_id, void *handler_args)
 {
+    
     esp_modem_dte_t *esp_dte = __containerof(dte, esp_modem_dte_t, parent);
     return esp_event_handler_register_with(esp_dte->event_loop_hdl, ESP_MODEM_EVENT, event_id, handler, handler_args);
+    //return esp_event_handler_instance_register_with (esp_dte->event_loop_hdl, ESP_MODEM_EVENT, event_id, handler, handler_args, &instance);
 }
 
 esp_err_t esp_modem_remove_event_handler(modem_dte_t *dte, esp_event_handler_t handler)
 {
     esp_modem_dte_t *esp_dte = __containerof(dte, esp_modem_dte_t, parent);
     return esp_event_handler_unregister_with(esp_dte->event_loop_hdl, ESP_MODEM_EVENT, ESP_EVENT_ANY_ID, handler);
+    //return esp_event_handler_instance_unregister_with(esp_dte->event_loop_hdl, ESP_MODEM_EVENT, ESP_EVENT_ANY_ID, instance);
 }
 
 esp_err_t esp_modem_start_ppp(modem_dte_t *dte)

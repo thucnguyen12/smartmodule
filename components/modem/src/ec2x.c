@@ -36,16 +36,20 @@
 #include "min.h"
 #include "min_id.h"
 
+#include "esp_netif_ppp.h"
+
+
 #define MODEM_RESULT_CODE_POWERDOWN "ec2x"
 
 #define MODEM_MAX_ACCESS_TECH_STR_LEN   64
 #define MODEM_MAX_NETWORK_BAND_STR_LEN  64
 
-esp_netif_t *gsm_esp_netif = NULL;
-void *modem_netif_adapter = NULL;
+// esp_netif_t *gsm_esp_netif = NULL;
+// void *modem_netif_adapter = NULL;
 
 extern min_context_t m_min_context;
 extern void send_min_data(min_msg_t *min_msg);
+extern bool gsm_started;
 
 // static bool timeout_with_4g_ec2x = false;
 // esp_netif_t *gsm_esp_netif = NULL;
@@ -549,8 +553,8 @@ esp_err_t ec2x_modem_dce_echo(ec2x_modem_dce_t *ec2x_dce, bool on)
 
     if (on)
     {
-        {
         if (dte->send_cmd(dte, "ATE1\r", MODEM_COMMAND_TIMEOUT_DEFAULT) != ESP_OK)
+        {
             ESP_LOGE(TAG, "send command failed");
             return ESP_FAIL;
         }
@@ -982,6 +986,37 @@ err:
     return ESP_FAIL;
 }
 
+static void on_ip_event(void *arg, esp_event_base_t event_base,
+                        int32_t event_id, void *event_data)
+{
+    ESP_LOGI(TAG, "IP event! %d", event_id);
+    if (event_id == IP_EVENT_PPP_GOT_IP) {
+        esp_netif_dns_info_t dns_info;
+        ppp_client_ip_info_t ipinfo = {0};
+        ip_event_got_ip_t *event = (ip_event_got_ip_t *) event_data;
+        esp_netif_t *netif = event->esp_netif;
+        ipinfo.ip.addr = event->ip_info.ip.addr;
+        ipinfo.gw.addr = event->ip_info.gw.addr;
+        ipinfo.netmask.addr = event->ip_info.netmask.addr;
+        ESP_LOGI(TAG, "Modem Connect to PPP Server");
+        ESP_LOGI(TAG, "~~~~~~~~~~~~~~");
+        ESP_LOGI(TAG, "IP          : " IPSTR, IP2STR(&event->ip_info.ip));
+        ESP_LOGI(TAG, "Netmask     : " IPSTR, IP2STR(&event->ip_info.netmask));
+        ESP_LOGI(TAG, "Gateway     : " IPSTR, IP2STR(&event->ip_info.gw));
+        esp_netif_get_dns_info(netif, 0, &dns_info);
+        ipinfo.ns1.addr = dns_info.ip.u_addr.ip4.addr;
+        ipinfo.ns2.addr = dns_info.ip.u_addr.ip4.addr;
+        esp_event_post(ESP_MODEM_EVENT, MODEM_EVENT_PPP_CONNECT, &ipinfo, sizeof(ipinfo), 0);
+        gsm_started = true;
+    } else if (event_id == IP_EVENT_PPP_LOST_IP) {
+        ESP_LOGI(TAG, "Modem Disconnect from PPP Server");
+        gsm_started = false;
+        esp_event_post(ESP_MODEM_EVENT, MODEM_EVENT_PPP_DISCONNECT, NULL, 0, 0);
+    }
+}
+
+
+
 static void gsm_reset_module(void)
 {
     	//Power off module by PowerKey
@@ -1308,8 +1343,6 @@ static void gsm_manager_task(void *arg)
 
                     ec2x_dce->parent.set_flow_ctrl(&ec2x_dce->parent, MODEM_FLOW_CONTROL_NONE);
 
-                   
-
                     //ec2x_dce->parent.store_profile(&ec2x_dce->parent);	//sáº½ lÆ°u cáº¥u hÃ¬nh baudrate -> khÃ´ng dÃ¹ng!
 
                     /* Get signal quality */
@@ -1339,33 +1372,34 @@ static void gsm_manager_task(void *arg)
 
 							/* Setup PPP environment */
 							ESP_LOGI(TAG, "Start ppp\r\n");
-							//assert(ESP_OK == esp_modem_setup_ppp(ec2x_dce->parent.dte));
+							assert(ESP_OK == esp_modem_setup_ppp(ec2x_dce->parent.dte));
 
-                            esp_netif_inherent_config_t netif_gsm_config = ESP_NETIF_INHERENT_DEFAULT_PPP();
-                            netif_gsm_config.route_prio = 3;
-                            netif_gsm_config.if_desc = "netif_gsm";
-                            esp_netif_config_t cfg = {
-                                .base = &netif_gsm_config,// use specific behaviour configuration
-                                .driver = NULL,                 
-                                .stack = ESP_NETIF_NETSTACK_DEFAULT_PPP, // use default WIFI-like network stack configuration
-                            };
-                            gsm_esp_netif = esp_netif_new(&cfg);
-                            assert(gsm_esp_netif);
-                            modem_netif_adapter = esp_modem_netif_setup(ec2x_dce->parent.dte);
-                            ESP_LOGI(TAG, "netif init");
-                            if(esp_modem_netif_set_default_handlers(modem_netif_adapter, gsm_esp_netif) == ESP_OK)
-                            {
-                                ESP_LOGI(TAG, "register handler");
-                            }
-                            /* attach the modem to the network interface */
-                            if (esp_netif_attach(gsm_esp_netif, modem_netif_adapter) == ESP_OK)
-                            {
-                                ESP_LOGI (TAG, "NETIF ATTACK OK");
-                            }
-                            
-                            ESP_LOGI("EC2x", "\t\t\r\n--- gsm_manager_task is exit ---");
-                            vTaskDelete();
-	                        // assert(ESP_OK == esp_modem_start_ppp(ec2x_dce->parent.dte));
+                            // ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &on_ip_event, NULL));
+                            // esp_netif_inherent_config_t netif_gsm_config = ESP_NETIF_INHERENT_DEFAULT_PPP();
+                            // netif_gsm_config.route_prio = 3;
+                            // netif_gsm_config.if_desc = "netif_gsm";
+                            // esp_netif_config_t cfg = {
+                            //     .base = &netif_gsm_config,// use specific behaviour configuration
+                            //     .driver = NULL,                 
+                            //     .stack = ESP_NETIF_NETSTACK_DEFAULT_PPP, // use default WIFI-like network stack configuration
+                            // };
+
+                            // esp_netif_t *gsm_esp_netif = esp_netif_new(&cfg);
+                            // assert(gsm_esp_netif);
+                            // //esp_event_loop_create_default();
+                            // //ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &on_ip_event, NULL));
+                            // void* modem_netif_adapter = esp_modem_netif_setup(ec2x_dce->parent.dte);
+                            // ESP_LOGI(TAG, "netif init");
+                            // //vTaskDelay (1000);
+                            // esp_modem_netif_set_default_handlers(modem_netif_adapter, gsm_esp_netif);
+                            // /* attach the modem to the network interface */
+                            // if (esp_netif_attach(gsm_esp_netif, modem_netif_adapter) == ESP_OK)
+                            // {
+                            //     ESP_LOGI (TAG, "NETIF ATTACK OK");
+                            // }
+                            // assert(ESP_OK == esp_modem_start_ppp(ec2x_dce->parent.dte));
+                            goto end;                            
+	                        
 						}
 						else
 						{
@@ -1398,7 +1432,12 @@ static void gsm_manager_task(void *arg)
             vTaskDelay(1000 / portTICK_RATE_MS);
         }
         
+        
     }
+    end:
+    ESP_LOGI("EC2x", "\t\t\r\n--- gsm_manager_task is exit ---");
+        vTaskDelay (5000 / portTICK_RATE_MS);
+        vTaskDelete(NULL);
 }
 
 //static void gsm_manager_task(void *arg)
@@ -1643,7 +1682,7 @@ modem_dce_t *ec2x_init(modem_dte_t *dte)
     ec2x_dce->parent.set_working_mode = ec2x_set_working_mode;
     ec2x_dce->parent.power_down = ec2x_power_down;
     ec2x_dce->parent.deinit = ec2x_deinit;
-
+    
 
     gsm_hardware_initialize();
     
@@ -1684,7 +1723,7 @@ modem_dce_t *ec2x_init(modem_dte_t *dte)
     // }
 
     return &(ec2x_dce->parent);
-//err_io:
+// err_io:
 //    free(ec2x_dce);
 err:
     return NULL;

@@ -50,7 +50,7 @@ esp_err_t esp_modem_add_event_handler(modem_dte_t *dte, esp_event_handler_t hand
 /**
  * @brief Backward compatible version of creating esp-netif(PPP) and attaching to esp_modem_start_ppp()
  */
-esp_err_t esp_modem_setup_ppp(modem_dte_t *dte);
+esp_err_t esp_modem_setup_ppp(modem_dte_t *dte)__attribute__ ((deprecated));;
 
 /**
  * @brief Backward compatible version of deleting esp-netif and  esp_modem_stop_ppp()

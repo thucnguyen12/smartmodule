@@ -122,8 +122,8 @@
 #define NVS_DATA_SENSOR "data_sensor_%d"
 #define NVS_SENSOR_DATA_CNT "sensor_count"
 
-static uint8_t ping_data_count_in_flash = 0;
-char ping_data_key [32];
+// static uint8_t ping_data_count_in_flash = 0;
+// char ping_data_key [32];
 static uint8_t data_sensor_count_in_flash = 0;
 char data_sensor_key [32];
 
@@ -1360,8 +1360,7 @@ void app_main(void)
     // create event loop and register callback
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &on_ip_event, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(NETIF_PPP_STATUS, ESP_EVENT_ANY_ID, &on_ppp_changed, NULL));
+    
     //creat share resources 
     event_group = xEventGroupCreate();
     GSM_Sem = xSemaphoreCreateMutex();
@@ -1416,6 +1415,8 @@ void app_main(void)
     {
         ESP_LOGI (TAG, "DTE INIT FAIL");
     }
+    ESP_ERROR_CHECK(esp_modem_add_event_handler(dte, modem_event_handler, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &modem_event_handler, NULL));
     while (0)
     {
         // app_cli  debug place
@@ -1438,11 +1439,17 @@ void app_main(void)
         vTaskDelay (2000/portTICK_RATE_MS);
     }
 
-    //init gsm
-    if(dce == NULL)
+    /*init gsm*/
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &on_ip_event, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(NETIF_PPP_STATUS, ESP_EVENT_ANY_ID, &on_ppp_changed, NULL));
     dce = ec2x_init (dte);
-    vTaskDelay (1000 / portTICK_RATE_MS);
-    
+    if (dte != NULL)
+    {
+        ESP_LOGW (TAG, "MODEM HANDLER REGISTER NOW");
+        ESP_ERROR_CHECK(esp_modem_set_event_handler(dte, modem_event_handler, ESP_EVENT_ANY_ID, NULL)); //FOR MODEM
+        
+    }
+
     EventBits_t ubits;
 
     // ETHERNET INIT Emac
@@ -1484,12 +1491,7 @@ void app_main(void)
     // end ethernet
 
     /* Register event handler */
-    if (dte != NULL)
-    {
-        ESP_LOGW (TAG, "MODEM HANDLER REGISTER NOW");
-        ESP_ERROR_CHECK(esp_modem_set_event_handler(dte, modem_event_handler, ESP_EVENT_ANY_ID, NULL)); //FOR MODEM
-        ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &modem_event_handler, NULL));
-    }
+    
     ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, &eth_event_handler, NULL)); //  FOR ETH
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &got_ip_event_handler, NULL)); // FOR IP
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_LOST_IP, &got_ip_event_handler, NULL)); // FOR IP
@@ -1586,7 +1588,7 @@ void app_main(void)
         ESP_LOGI (TAG, "MQTT INIT");
         esp_mqtt_client_start(mqtt_client);
     }
-
+    vTaskDelay (10 / portTICK_RATE_MS);
     static uint32_t now;
     static uint32_t last_tick_cnt = 0;
     
