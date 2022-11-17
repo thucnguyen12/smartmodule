@@ -86,7 +86,7 @@ void advanced_ota_example_task(void *pvParameter)
 
     if (ota_url != NULL)
     {
-        MEMCPY (config.url, ota_url, sizeof (ota_url));
+        memcpy ((char *) config.url, (char *)ota_url, sizeof (ota_url));
     }
 
 #ifdef CONFIG_EXAMPLE_FIRMWARE_UPGRADE_URL_FROM_STDIN

@@ -27,7 +27,11 @@ typedef enum {
     MODEM_EVENT_PPP_CONNECT    = 0x101,
     MODEM_EVENT_PPP_DISCONNECT = 0x102,
     MODEM_EVENT_PPP_STOP       = 0x103,
+	// HuyTV
     MODEM_EVENT_UNKNOWN        = 0x104,
+    MODEM_EVENT_INIT_DONE      = 0x105,
+    MODEM_EVENT_PPP_NO_CARRIER_RESET_GSM = 0x106,
+    MODEM_EVENT_PPP_DNS         = 0x107,
 } esp_modem_compat_event_t;
 
 /**
@@ -50,7 +54,7 @@ esp_err_t esp_modem_add_event_handler(modem_dte_t *dte, esp_event_handler_t hand
 /**
  * @brief Backward compatible version of creating esp-netif(PPP) and attaching to esp_modem_start_ppp()
  */
-esp_err_t esp_modem_setup_ppp(modem_dte_t *dte)__attribute__ ((deprecated));;
+esp_err_t esp_modem_setup_ppp(modem_dte_t *dte) __attribute__ ((deprecated));
 
 /**
  * @brief Backward compatible version of deleting esp-netif and  esp_modem_stop_ppp()

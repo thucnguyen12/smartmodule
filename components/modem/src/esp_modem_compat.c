@@ -115,6 +115,7 @@ esp_err_t esp_modem_setup_ppp(modem_dte_t *dte)
 #endif
     void *modem_netif_adapter = esp_modem_netif_setup(dte);
     esp_modem_netif_set_default_handlers(modem_netif_adapter, gsm_netif);
+    ESP_LOGI (TAG, "SET UP PPP NOW ");
     /* attach the modem to the network interface */
     return esp_netif_attach(gsm_netif, modem_netif_adapter);
 }

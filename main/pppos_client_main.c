@@ -16,11 +16,11 @@
 #include "esp_modem_netif.h"
 #include "esp_log.h"
 #include "sim800.h"
-#include "bg96.h"
+
 #include "sim7600.h"
 #include "hw_power.h"
 #include "driver/gpio.h"
-#include "ec600s.h"
+
 #include "ec2x.h"
 #include "sdkconfig.h"
 #include "freertos/semphr.h"
@@ -50,10 +50,10 @@
 #endif
 
 //RTC
-#include "rtc.h"
+#include "esp32/rtc.h"
 #include "esp_sntp.h"
 #include "hal/cpu_hal.h"
-#include "hal/emac_hal.h"
+#include "hal/emac.h"
 #include "esp_eth.h"
 #include "esp_eth_mac.h"
 //watchdog task
@@ -93,7 +93,7 @@
 #define FIRMWARE_VERSION "0x01"
 #define HARDWARE_VERSION "0x01"
 
-#define DEFAULT_PROTOCOL GSM_4G_PROTOCOL
+#define DEFAULT_PROTOCOL PROTOCOL_NONE
 
 #define EXAMPLE_PING_IP           "www.google.com"
 #define BACKUP_PING_IP            "www.google.com"
@@ -132,7 +132,7 @@ static const char *TAG = "pppos_example";
 //group event and bits
 static EventGroupHandle_t event_group = NULL;
 static const int CONNECT_BIT = BIT0;
-static const int STOP_BIT = BIT1;
+// static const int STOP_BIT = BIT1;
 //static const int GOT_DATA_BIT = BIT2;
 static const int MQTT_DIS_CONNECT_BIT = BIT3;
 static const int UPDATE_BIT = BIT4; 
@@ -229,7 +229,7 @@ static info_config_t config_infor_now;
 //extern char recv_buf[64];
 //General variable
 
-esp_eth_handle_t eth_handle;
+esp_eth_handle_t eth_handle = NULL; 
 modem_dce_t *dce = NULL;
 static bool mqtt_server_ready = false;
 bool wifi_started = false;
@@ -457,10 +457,11 @@ static void modem_event_handler(void *event_handler_arg, esp_event_base_t event_
         break;
     case ESP_MODEM_EVENT_PPP_STOP:
         ESP_LOGI(TAG, "Modem PPP Stopped");
-        xEventGroupSetBits(event_group, STOP_BIT);
+        gsm_started = false;
+        //  xEventGroupSetBits(event_group, STOP_BIT);
         break;
     case ESP_MODEM_EVENT_UNKNOWN:
-        ESP_LOGW(TAG, "Unknown line received: %s", (char *)event_data);
+        ESP_LOGD(TAG, "Unknown line received: %s", (char *)event_data);
         break;
     default:
         break;
@@ -826,7 +827,9 @@ static void on_ip_event(void *arg, esp_event_base_t event_base,
         gsm_started = true;
     } else if (event_id == IP_EVENT_PPP_LOST_IP) {
         gsm_started = false;
+        dce = ec2x_init (dte);
         ESP_LOGI(TAG, "Modem Disconnect from PPP Server");
+
     } else if (event_id == IP_EVENT_GOT_IP6) {
         ESP_LOGI(TAG, "GOT IPv6 event!");
 
@@ -882,7 +885,7 @@ static void got_ip_event_handler(void *arg, esp_event_base_t event_base,
         ESP_LOGI(TAG, "~~~~~~~~~~~");
         eth_started = true;
     }
-    else if (event_id == IP_EVENT_ETH_LOST_IP)
+    else
     {
         ESP_LOGI(TAG, "Ethernet Lost IP Address");
         eth_started = false;
@@ -1294,7 +1297,7 @@ esp_err_t get_interface_status (void)
     static int netif_cnt = 0;
     netif_cnt = esp_netif_get_nr_of_ifs();
     ESP_LOGI (TAG, "NOW GET NET INTERFACE INFO: %d", netif_cnt);
-    for (int i = 0; i < netif_cnt; ++i) {
+    for (int i = 0; i < netif_cnt; i++) {
         netif = esp_netif_next(netif);
         if (is_our_netif ("netif_", netif)) {
             ESP_LOGI(TAG, "Now connected to %s", esp_netif_get_desc(netif));
@@ -1393,7 +1396,7 @@ void app_main(void)
     //     }       
     //     vTaskDelay(100 / portTICK_PERIOD_MS);
     // }
-    internal_flash_store_default_config ();
+    //internal_flash_store_default_config ();
     ESP_LOGI (TAG, "STORE DEFAULT CONFIG INFO");
     /* create dte object */
     esp_modem_dte_config_t dte_config = ESP_MODEM_DTE_DEFAULT_CONFIG();
@@ -1403,12 +1406,14 @@ void app_main(void)
     dte_config.rx_io_num = GPIO_RX0;
     dte_config.rts_io_num = 0;
     dte_config.cts_io_num = 0;
+    dte_config.port_num = UART_NUM_0;
     dte_config.rx_buffer_size = CONFIG_EXAMPLE_MODEM_UART_RX_BUFFER_SIZE;
     dte_config.tx_buffer_size = CONFIG_EXAMPLE_MODEM_UART_TX_BUFFER_SIZE;
     dte_config.event_queue_size = CONFIG_EXAMPLE_MODEM_UART_EVENT_QUEUE_SIZE;
     dte_config.event_task_stack_size = CONFIG_EXAMPLE_MODEM_UART_EVENT_TASK_STACK_SIZE;
     dte_config.event_task_priority = CONFIG_EXAMPLE_MODEM_UART_EVENT_TASK_PRIORITY;
-    dte_config.dte_buffer_size = CONFIG_EXAMPLE_MODEM_UART_RX_BUFFER_SIZE / 2;
+    dte_config.line_buffer_size = CONFIG_EXAMPLE_MODEM_UART_RX_BUFFER_SIZE / 2;
+    dte_config.pattern_queue_size = 1024;
     
     dte = esp_modem_dte_init(&dte_config);
     if (dte == NULL)
@@ -1442,14 +1447,15 @@ void app_main(void)
     /*init gsm*/
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &on_ip_event, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(NETIF_PPP_STATUS, ESP_EVENT_ANY_ID, &on_ppp_changed, NULL));
-    dce = ec2x_init (dte);
+    
     if (dte != NULL)
     {
         ESP_LOGW (TAG, "MODEM HANDLER REGISTER NOW");
         ESP_ERROR_CHECK(esp_modem_set_event_handler(dte, modem_event_handler, ESP_EVENT_ANY_ID, NULL)); //FOR MODEM
         
     }
-
+    dce = ec2x_init (dte);
+    
     EventBits_t ubits;
 
     // ETHERNET INIT Emac
@@ -1468,6 +1474,10 @@ void app_main(void)
     
     eth_netif = esp_netif_new(&cfg);
 
+     /* Register event handler */
+    ESP_ERROR_CHECK(esp_eth_set_default_handlers(eth_netif));
+    ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, &eth_event_handler, NULL)); //  FOR ETH
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &got_ip_event_handler, NULL)); // FOR IP
     // Init MAC and PHY configs to default
     eth_mac_config_t mac_config = ETH_MAC_DEFAULT_CONFIG();
     eth_phy_config_t phy_config = ETH_PHY_DEFAULT_CONFIG();
@@ -1489,12 +1499,6 @@ void app_main(void)
     ESP_LOGI (TAG, "netif attach done");
 
     // end ethernet
-
-    /* Register event handler */
-    
-    ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, &eth_event_handler, NULL)); //  FOR ETH
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &got_ip_event_handler, NULL)); // FOR IP
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_LOST_IP, &got_ip_event_handler, NULL)); // FOR IP
 
     ESP_LOGI (TAG, "BEGIN WIFI");
     app_wifi_connect (wifi_name, wifi_pass);
@@ -1588,13 +1592,20 @@ void app_main(void)
         ESP_LOGI (TAG, "MQTT INIT");
         esp_mqtt_client_start(mqtt_client);
     }
-    vTaskDelay (10 / portTICK_RATE_MS);
+    
     static uint32_t now;
     static uint32_t last_tick_cnt = 0;
     
+    // while (1)
+    // {
+    //     get_interface_status ();
+    //     vTaskDelay (500);
+    // }
     
+
     while(1)
     {
+        vTaskDelay (100/ portTICK_RATE_MS);
         if (mqtt_server_ready == false)
         {
             // get mqtt server from http request

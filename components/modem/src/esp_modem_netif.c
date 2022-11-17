@@ -1,8 +1,16 @@
-/*
- * SPDX-FileCopyrightText: 2015-2021 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: Apache-2.0
- */
+// Copyright 2015-2018 Espressif Systems (Shanghai) PTE LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 #include "esp_netif.h"
 #include "esp_netif_ppp.h"
 #include "esp_modem.h"
@@ -18,16 +26,19 @@ typedef struct esp_modem_netif_driver_s {
     modem_dte_t            *dte;        /*!< ptr to the esp_modem objects (DTE) */
 } esp_modem_netif_driver_t;
 
+
 static void on_ppp_changed(void *arg, esp_event_base_t event_base,
                            int32_t event_id, void *event_data)
 {
     modem_dte_t *dte = arg;
+    ESP_LOGD(TAG, "[0] PPP state changed event 0x%0x04", event_id);
     if (event_id < NETIF_PP_PHASE_OFFSET) {
-        ESP_LOGI(TAG, "PPP state changed event %d", event_id);
         // only notify the modem on state/error events, ignoring phase transitions
         esp_modem_notify_ppp_netif_closed(dte);
     }
 }
+
+
 /**
  * @brief Transmit function called from esp_netif to output network stack data
  *
@@ -136,19 +147,6 @@ esp_err_t esp_modem_netif_clear_default_handlers(void *h)
     if (ret != ESP_OK) {
         goto clear_event_failed;
     }
-    ret = esp_event_handler_unregister(IP_EVENT, IP_EVENT_PPP_GOT_IP, esp_netif_action_connected);
-    if (ret != ESP_OK) {
-        goto clear_event_failed;
-    }
-    ret = esp_event_handler_unregister(IP_EVENT, IP_EVENT_PPP_LOST_IP, esp_netif_action_disconnected);
-    if (ret != ESP_OK) {
-        goto clear_event_failed;
-    }
-
-    // this event is registered while modem gets attached to netif.
-    // we don't have any detach functionality, so we unregister here and ignore potential error
-    esp_event_handler_unregister(NETIF_PPP_STATUS, ESP_EVENT_ANY_ID, on_ppp_changed);
-
     return ESP_OK;
 
 clear_event_failed:
@@ -159,29 +157,26 @@ clear_event_failed:
 
 esp_err_t esp_modem_netif_set_default_handlers(void *h, esp_netif_t * esp_netif)
 {
+	ESP_LOGI(TAG, "[esp_modem_netif_set_default_handlers] Set default handle");
     esp_modem_netif_driver_t *driver = h;
     esp_err_t ret;
     ret = esp_modem_set_event_handler(driver->dte, esp_netif_action_start, ESP_MODEM_EVENT_PPP_START, esp_netif);
-    
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "ESP_MODEM_EVENT_PPP_START");
         goto set_event_failed;
     }
     ret = esp_modem_set_event_handler(driver->dte, esp_netif_action_stop, ESP_MODEM_EVENT_PPP_STOP, esp_netif);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "ESP_MODEM_EVENT_PPP_STOP");
         goto set_event_failed;
     }
     ret = esp_event_handler_register(IP_EVENT, IP_EVENT_PPP_GOT_IP, esp_netif_action_connected, esp_netif);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "IP_EVENT_PPP_GOT_IP");
         goto set_event_failed;
     }
     ret = esp_event_handler_register(IP_EVENT, IP_EVENT_PPP_LOST_IP, esp_netif_action_disconnected, esp_netif);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "IP_EVENT_PPP_LOST_IP");
         goto set_event_failed;
     }
+
     return ESP_OK;
 
 set_event_failed:

@@ -24,35 +24,17 @@
 #include "lwip/dns.h"
 // #include "tcpip_adapter.h"
 #include "esp_netif.h"
+#include "esp_modem_netif.h"
 #include "esp_modem.h"
 #include "esp_log.h"
 #include "sdkconfig.h"
 #include "gsm_hardware.h"
-#include "gsm_ultilities.h"
-#include "gsm_hardware.h"
-#include "esp_modem_netif.h"
-//#include "board.h"
-//#include "utilities.h"
-#include "min.h"
-#include "min_id.h"
-
-#include "esp_netif_ppp.h"
-
+#include "gsm_utilities.h"
+// #include "board.h"
+// #include "app_io_expander.h"
+// #include "internal_flash.h"
 
 #define MODEM_RESULT_CODE_POWERDOWN "ec2x"
-
-#define MODEM_MAX_ACCESS_TECH_STR_LEN   64
-#define MODEM_MAX_NETWORK_BAND_STR_LEN  64
-
-// esp_netif_t *gsm_esp_netif = NULL;
-// void *modem_netif_adapter = NULL;
-
-extern min_context_t m_min_context;
-extern void send_min_data(min_msg_t *min_msg);
-extern bool gsm_started;
-
-// static bool timeout_with_4g_ec2x = false;
-// esp_netif_t *gsm_esp_netif = NULL;
 
 /**
  * @brief Macro defined for error checking
@@ -80,17 +62,12 @@ typedef struct
 } ec2x_modem_dce_t;
 
 ec2x_modem_dce_t *ec2x_dce = NULL;
-extern bool got_gsm_imei ;
-extern char GSM_IMEI[16];
-extern char SIM_IMEI [16];
-extern uint8_t csq;
-extern SemaphoreHandle_t GSM_Sem;
 
-extern void device_reboot(uint8_t reason);
 // extern void gsm_hw_ctrl_power_en(uint8_t ctrl);
 // extern void cgsm_hw_ctrl_power_key(bool on)(uint8_t ctrl);
 // extern uint8_t CopyParameter(char *BufferSource, char *BufferDes, char FindCharBegin, char FindCharEnd);
 // extern uint32_t GetNumberFromString(uint16_t BeginAddress, char *Buffer);
+extern bool got_gsm_imei;
 
 /**
  * @brief Handle response from AT+CSQ
@@ -325,7 +302,7 @@ static esp_err_t ec2x_handle_qccid(modem_dce_t *dce, const char *line)
         char *qccid = strstr(line, "+QCCID:");
         if (qccid != NULL)
         {
-            //ESP_LOGI(TAG, "%s", qccid);
+            // ESP_LOGI(TAG, "%s", qccid);
             int len = snprintf(dce->imei, MODEM_IMSI_LENGTH + 1, "%s", &qccid[8]);
             if (len > 2)
             {
@@ -333,7 +310,7 @@ static esp_err_t ec2x_handle_qccid(modem_dce_t *dce, const char *line)
                 strip_cr_lf_tail(dce->imei, len);
                 err = ESP_OK;
             }
-            //ESP_LOGI(TAG, "SIM IMEI: %s", dce->imei);
+            // ESP_LOGI(TAG, "SIM IMEI: %s", dce->imei);
         }
     }
     return err;
@@ -362,12 +339,10 @@ static esp_err_t ec2x_handle_networkband(modem_dce_t *dce, const char *line)
         }
         if (index >= 3)
         {
-            //Copy fields
+            // Copy fields
             memset(dce->act_string, 0, sizeof(dce->act_string));
-
-            //â€œGSMâ€� â€œGPRSâ€� â€œEDGEâ€�/ â€œWCDMAâ€� â€œHSDPAâ€� â€œHSUPAâ€� â€œHSPA+â€� â€œTDSCDMAâ€�/ â€œTDD LTEâ€� â€œFDD LTEâ€�
             char access_tech[MODEM_MAX_ACCESS_TECH_STR_LEN] = {0};
-            memcpy(access_tech, &net_info_msg[10], comma_idx[0] - 10);
+            memcpy(access_tech, &net_info_msg[11], comma_idx[0] - 12);
             snprintf((char *)dce->act_string, MODEM_MAX_ACCESS_TECH_STR_LEN, "%s", access_tech);
 
             char operator_code_name[15] = {0};
@@ -399,14 +374,14 @@ static esp_err_t ec2x_handle_networkband(modem_dce_t *dce, const char *line)
                 break;
             }
 
-            //Network band
+            // Network band
             memset(dce->network_band, 0, sizeof(dce->network_band));
 
             char band_name[MODEM_MAX_NETWORK_BAND_STR_LEN] = {0};
             memcpy(band_name, &net_info_msg[comma_idx[1] + 1], comma_idx[2] - comma_idx[1] - 1);
             snprintf((char *)dce->network_band, MODEM_MAX_NETWORK_BAND_STR_LEN, "%s", band_name);
 
-            //Network channel
+            // Network channel
             uint8_t j = 0;
             for (uint8_t i = comma_idx[2] + 1; i < strlen(net_info_msg); i++)
             {
@@ -436,10 +411,6 @@ static esp_err_t ec2x_handle_networkband(modem_dce_t *dce, const char *line)
         err = esp_modem_process_command_done(dce, MODEM_STATE_SUCCESS);
     }
     else if (strstr(line, MODEM_RESULT_CODE_ERROR))
-    {
-        err = esp_modem_process_command_done(dce, MODEM_STATE_FAIL);
-    }
-    else if (strstr (line, "NO SERVICE"))
     {
         err = esp_modem_process_command_done(dce, MODEM_STATE_FAIL);
     }
@@ -515,7 +486,7 @@ static esp_err_t ec2x_handle_power_down(modem_dce_t *dce, const char *line)
 }
 
 // /**
-//  * @brief Handle response from any AT command that return result is "OK" 
+//  * @brief Handle response from any AT command that return result is "OK"
 //  */
 // static esp_err_t ec2x_handle_return_OK(modem_dce_t *dce, const char *line)
 // {
@@ -803,6 +774,46 @@ err:
     return ESP_FAIL;
 }
 
+#if CONFIG_EC200_UNLOCK_BAND
+static esp_err_t ec2x_handle_unlockband_step(modem_dce_t *dce, const char *line)
+{
+    esp_err_t err = ESP_FAIL;
+
+    if (strstr(line, MODEM_RESULT_CODE_SUCCESS))
+    {
+        err = esp_modem_process_command_done(dce, MODEM_STATE_SUCCESS);
+    }
+    else
+    {
+        err = esp_modem_process_command_done(dce, MODEM_STATE_FAIL);
+    }
+    return err;
+}
+#endif
+
+static esp_err_t ec2x_do_unlock_band(ec2x_modem_dce_t *ec2x_dce)
+{
+#if CONFIG_EC200_UNLOCK_BAND
+    modem_dte_t *dte = ec2x_dce->parent.dte;
+    ec2x_dce->parent.handle_line = ec2x_handle_unlockband_step;
+    DCE_CHECK(dte->send_cmd(dte, "AT+QCFG=\"nwscanseq\",3,1\r", 5000) == ESP_OK, "send command failed", err);
+    DCE_CHECK(ec2x_dce->parent.state == MODEM_STATE_SUCCESS, "Unlock band step0 failed", err);
+
+    ec2x_dce->parent.handle_line = ec2x_handle_unlockband_step;
+    DCE_CHECK(dte->send_cmd(dte, "AT+QCFG=\"nwscanmode\",3,1\r", 5000) == ESP_OK, "send command failed", err);
+    DCE_CHECK(ec2x_dce->parent.state == MODEM_STATE_SUCCESS, "Unlock band step1 failed", err);
+
+    ec2x_dce->parent.handle_line = ec2x_handle_unlockband_step;
+    DCE_CHECK(dte->send_cmd(dte, "AT+QCFG=\"band\",00,45\r", 5000) == ESP_OK, "send command failed", err);
+    DCE_CHECK(ec2x_dce->parent.state == MODEM_STATE_SUCCESS, "Unlock band step2 failed", err);
+    ESP_LOGI(TAG, "Unlock band finished");
+err:
+    return ESP_FAIL;
+#else
+    return ESP_OK;
+#endif
+}
+
 // /**
 //  * @brief Thiáº¿t láº­p tá»‘c Ä‘á»™ baudrate cho module
 //  *
@@ -877,7 +888,7 @@ err:
 static esp_err_t ec2x_set_QIDEACT(ec2x_modem_dce_t *ec2x_dce)
 {
     modem_dte_t *dte = ec2x_dce->parent.dte;
-    ec2x_dce->parent.handle_line = esp_modem_dce_handle_response_default; //ec2x_handle_return_OK;
+    ec2x_dce->parent.handle_line = esp_modem_dce_handle_response_default; // ec2x_handle_return_OK;
     DCE_CHECK(dte->send_cmd(dte, "AT+QIDEACT=1\r", MODEM_COMMAND_TIMEOUT_DEFAULT) == ESP_OK, "send command failed", err);
     DCE_CHECK(ec2x_dce->parent.state == MODEM_STATE_SUCCESS, "send QIDEACT failed", err);
     ESP_LOGI(TAG, "De-active PDP OK");
@@ -917,7 +928,7 @@ err:
 static esp_err_t ec2x_set_CGREG(ec2x_modem_dce_t *ec2x_dce)
 {
     modem_dte_t *dte = ec2x_dce->parent.dte;
-    ec2x_dce->parent.handle_line = esp_modem_dce_handle_response_default; //ec2x_handle_return_OK;
+    ec2x_dce->parent.handle_line = esp_modem_dce_handle_response_default; // ec2x_handle_return_OK;
     DCE_CHECK(dte->send_cmd(dte, "AT+CGREG=2\r", MODEM_COMMAND_TIMEOUT_DEFAULT) == ESP_OK, "send command failed", err);
     DCE_CHECK(ec2x_dce->parent.state == MODEM_STATE_SUCCESS, "send CGREG failed", err);
     ESP_LOGI(TAG, "Register GSM network OK");
@@ -937,7 +948,7 @@ err:
 static esp_err_t ec2x_set_APN(ec2x_modem_dce_t *ec2x_dce)
 {
     modem_dte_t *dte = ec2x_dce->parent.dte;
-    ec2x_dce->parent.handle_line = esp_modem_dce_handle_response_default; //ec2x_handle_return_OK;
+    ec2x_dce->parent.handle_line = esp_modem_dce_handle_response_default; // ec2x_handle_return_OK;
     DCE_CHECK(dte->send_cmd(dte, "AT+CGDCONT=1,\"IP\",\"v-internet\"\r", MODEM_COMMAND_TIMEOUT_DEFAULT) == ESP_OK, "set APN failed", err);
     DCE_CHECK(ec2x_dce->parent.state == MODEM_STATE_SUCCESS, "send CGREG failed", err);
     ESP_LOGI(TAG, "Setup APN OK");
@@ -986,94 +997,75 @@ err:
     return ESP_FAIL;
 }
 
-static void on_ip_event(void *arg, esp_event_base_t event_base,
-                        int32_t event_id, void *event_data)
-{
-    ESP_LOGI(TAG, "IP event! %d", event_id);
-    if (event_id == IP_EVENT_PPP_GOT_IP) {
-        esp_netif_dns_info_t dns_info;
-        ppp_client_ip_info_t ipinfo = {0};
-        ip_event_got_ip_t *event = (ip_event_got_ip_t *) event_data;
-        esp_netif_t *netif = event->esp_netif;
-        ipinfo.ip.addr = event->ip_info.ip.addr;
-        ipinfo.gw.addr = event->ip_info.gw.addr;
-        ipinfo.netmask.addr = event->ip_info.netmask.addr;
-        ESP_LOGI(TAG, "Modem Connect to PPP Server");
-        ESP_LOGI(TAG, "~~~~~~~~~~~~~~");
-        ESP_LOGI(TAG, "IP          : " IPSTR, IP2STR(&event->ip_info.ip));
-        ESP_LOGI(TAG, "Netmask     : " IPSTR, IP2STR(&event->ip_info.netmask));
-        ESP_LOGI(TAG, "Gateway     : " IPSTR, IP2STR(&event->ip_info.gw));
-        esp_netif_get_dns_info(netif, 0, &dns_info);
-        ipinfo.ns1.addr = dns_info.ip.u_addr.ip4.addr;
-        ipinfo.ns2.addr = dns_info.ip.u_addr.ip4.addr;
-        esp_event_post(ESP_MODEM_EVENT, MODEM_EVENT_PPP_CONNECT, &ipinfo, sizeof(ipinfo), 0);
-        gsm_started = true;
-    } else if (event_id == IP_EVENT_PPP_LOST_IP) {
-        ESP_LOGI(TAG, "Modem Disconnect from PPP Server");
-        gsm_started = false;
-        esp_event_post(ESP_MODEM_EVENT, MODEM_EVENT_PPP_DISCONNECT, NULL, 0, 0);
-    }
-}
-
-
-
+static bool gsm_init_done = false;
 static void gsm_reset_module(void)
 {
-    	//Power off module by PowerKey
-    	gsm_hw_ctrl_power_key(1);
-    	vTaskDelay(650 / portTICK_PERIOD_MS);
-    	gsm_hw_ctrl_power_key(0);
+    gsm_init_done = false;
 
-    //Turn off Vbat +4V2
-//    gsm_hw_ctrl_power_en(0);
-    static uint8_t logic_level = 0;
-    logic_level = 0;
-    static min_msg_t logic_min_msg;
-    logic_min_msg.id = MIN_ID_GPIO_CONTROL;
-    logic_min_msg.payload = &logic_level;
-    logic_min_msg.len = sizeof (uint8_t);
-    send_min_data (&logic_min_msg);
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
-    logic_level = 1;
-    logic_min_msg.payload = &logic_level;
-    send_min_data (&logic_min_msg);
-    //Turn ON Vbat +4V2
-//    gsm_hw_ctrl_power_en(1);
-//    vTaskDelay(1000 / portTICK_PERIOD_MS); //Waiting for Vbat stable 500ms
+    // Deactive PowerKey
+    ESP_LOGD(TAG, "Deactive power key");
+    gsm_hw_ctrl_power_key(0);
+    //app_io_expander_commit_write();
+
+    // Turn off Vbat +4V2
+    gsm_hw_ctrl_power_en(0);
+    ESP_LOGD(TAG, "Turn off vbat");
+    vTaskDelay(4000 / portTICK_PERIOD_MS);
+
+    // Turn ON Vbat +4V2
+    ESP_LOGD(TAG, "Turn on vbat");
+    gsm_hw_ctrl_power_en(1);
+    //app_io_expander_commit_write();
+    vTaskDelay(3000 / portTICK_PERIOD_MS); // Waiting for Vbat stable 500ms
 
     /* Turn On module by PowerKey */
-    gsm_hw_ctrl_power_key(0);
-    vTaskDelay (500/portTICK_PERIOD_MS);
+    ESP_LOGD(TAG, "Turn on power key level 1, pin %d", CONFIG_GSM_POWER_KEY_PIN);
     gsm_hw_ctrl_power_key(1);
+    //app_io_expander_commit_write();
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    ESP_LOGD(TAG, "Turn off power key level 0, pin %d", CONFIG_GSM_POWER_KEY_PIN);
+    gsm_hw_ctrl_power_key(0);
+    //app_io_expander_commit_write();
+}
+
+static bool m_do_restart = false;
+void ex2x_restart_module(void)
+{
+    m_do_restart = true;
 }
 
 /******************************************************************************************/
 /**
-* @brief   : task quáº£n lÃ½ hoáº¡t Ä‘á»™ng cá»§a module gsm
-* @param   :  
-* @retval  :
-* @author  :
-* @created :
-*/
+ * @brief   : task quáº£n lÃ½ hoáº¡t Ä‘á»™ng cá»§a module gsm
+ * @param   :
+ * @retval  :
+ * @author  :
+ * @created :
+ */
 static void gsm_manager_task(void *arg)
 {
-    ESP_LOGI("EC2x", "\t\r\n--- gsm_manager_task is running ---\r\n");
-    // GSM_Sem = xSemaphoreCreateMutex();
+    // ESP_LOGI("EC2x", "\t\r\n--- gsm_manager_task is running ---\r\n");
     vTaskDelay(2000);
-
     esp_err_t err;
     uint8_t gsm_init_step = 0;
-    bool gsm_init_done = false;
     uint8_t send_at_retry_nb = 0;
-    // timeout_with_4g_ec2x = false;
 
     for (;;)
     {
+        if (m_do_restart)
+        {
+            m_do_restart = false;
+            esp_modem_stop_ppp(ec2x_dce->parent.dte);
+            gsm_init_step = 0;
+            send_at_retry_nb = 0;
+            gsm_reset_module();
+        }
         if (!gsm_init_done && ec2x_dce != NULL)
         {
             switch (gsm_init_step)
             {
             case 0:
+                ec2x_dce->parent.rssi = 0;
                 err = esp_modem_dce_sync(&(ec2x_dce->parent));
                 if (err == ESP_OK)
                 {
@@ -1083,17 +1075,16 @@ static void gsm_manager_task(void *arg)
                 else
                 {
                     send_at_retry_nb++;
-                    if (send_at_retry_nb > 20)
+                    if (send_at_retry_nb > 15)
                     {
                         ESP_LOGE(TAG, "Modem not response AT command. Reset module...");
-                        // timeout_with_4g_ec2x = true;
                         send_at_retry_nb = 0;
                         gsm_reset_module();
                     }
                 }
                 break;
+
             case 1:
-                // xSemaphoreGive(GSM_Sem);
                 err = esp_modem_dce_echo(&(ec2x_dce->parent), false);
                 if (err == ESP_OK)
                 {
@@ -1111,21 +1102,6 @@ static void gsm_manager_task(void *arg)
                     }
                 }
                 break;
-                //				case 2:
-                //					/* Thay Ä‘á»•i tá»‘c Ä‘á»™ truyá»�n dá»¯ liá»‡u UART baudrate
-                //					* Baudrate 115200 cháº¡y á»•n Ä‘á»‹nh khi stream opus
-                //					* Baudrate 230400 stream Ä‘Æ°á»£c mp3 128kbps
-                //					*/
-                //					ESP_LOGI(TAG, "Gui lenh IPR");
-                //					err = ec2x_set_IPR(ec2x_dce, 115200);
-                //					if(err == ESP_OK) {
-                //						/* Thay Ä‘á»•i UART baudrate cá»§a ESP */
-                //						if(uart_set_baudrate(UART_NUM_1, 115200) == ESP_OK) {
-                //							send_at_retry_nb = 0;
-                //							gsm_init_step++;
-                //						}
-                //					}
-                //					break;
 
             case 2:
                 ESP_LOGI(TAG, "Get module name");
@@ -1140,7 +1116,7 @@ static void gsm_manager_task(void *arg)
                 else
                 {
                     send_at_retry_nb++;
-                    if (send_at_retry_nb > 10)
+                    if (send_at_retry_nb > 7)
                     {
                         ESP_LOGE(TAG, "Modem not response AT command. Reset module...");
                         send_at_retry_nb = 0;
@@ -1149,6 +1125,7 @@ static void gsm_manager_task(void *arg)
                     }
                 }
                 break;
+
             case 3:
                 ESP_LOGI(TAG, "Get module IMEI");
                 memset(ec2x_dce->parent.imei, 0, sizeof(ec2x_dce->parent.imei));
@@ -1157,14 +1134,26 @@ static void gsm_manager_task(void *arg)
                 {
                     ESP_LOGI(TAG, "Get GSM IMEI: %s", ec2x_dce->parent.imei);
                     got_gsm_imei = true;
-                    memcpy (GSM_IMEI, (char*) (ec2x_dce->parent.imei), strlen (GSM_IMEI)); //copy IMEI
+                    // internal_flash_cfg_t *flash_cfg = internal_flash_get_config();
+                    // internal_flash_lock();
+                    // if (strcmp(flash_cfg->gsm_imei, ec2x_dce->parent.imei))
+                    // {
+                    //     strcpy(flash_cfg->gsm_imei, ec2x_dce->parent.imei);
+                    //     // internal_flash_unlock();
+                    //     // internal_flash_store_current_imei();
+                    //     // DEBUG_ERROR("Store new imei %s\r\n", flash_cfg->gsm_imei);
+                    // }
+                    // else
+                    // {
+                    //     internal_flash_unlock();
+                    // }
                     send_at_retry_nb = 0;
                     gsm_init_step++;
                 }
                 else
                 {
                     send_at_retry_nb++;
-                    if (send_at_retry_nb > 10)
+                    if (send_at_retry_nb > 7)
                     {
                         ESP_LOGE(TAG, "Modem not response AT command. Reset module...");
                         send_at_retry_nb = 0;
@@ -1173,22 +1162,21 @@ static void gsm_manager_task(void *arg)
                     }
                 }
                 break;
+
             case 4:
                 ESP_LOGI(TAG, "Get GSM IMSI");
                 memset(ec2x_dce->parent.imsi, 0, sizeof(ec2x_dce->parent.imsi));
                 err = ec2x_get_imsi_number(ec2x_dce);
                 if (err == ESP_OK)
                 {
-                    ESP_LOGI(TAG, "Get GSM IMSI: %s", ec2x_dce->parent.imsi);
-                    memcpy (SIM_IMEI, (char*) (ec2x_dce->parent.imsi), strlen (SIM_IMEI)); //copy IMEI
-                    //board_set_device_id(atoi(ec2x_dce->parent.imsi));
+                    ESP_LOGI(TAG, "GSM IMSI: %s", ec2x_dce->parent.imsi);
                     send_at_retry_nb = 0;
                     gsm_init_step++;
                 }
                 else
                 {
                     send_at_retry_nb++;
-                    if (send_at_retry_nb > 10)
+                    if (send_at_retry_nb > 7)
                     {
                         ESP_LOGE(TAG, "Get GSM IMSI: FAILED!");
                         send_at_retry_nb = 0;
@@ -1196,44 +1184,31 @@ static void gsm_manager_task(void *arg)
                     }
                 }
                 break;
+
             case 5:
-                ESP_LOGI(TAG, "Get SIM IMEI");
+                ESP_LOGD(TAG, "Get SIM IMEI");
                 memset(ec2x_dce->parent.imei, 0, sizeof(ec2x_dce->parent.imei));
                 err = ec2x_get_imei(ec2x_dce);
                 if (err == ESP_OK)
                 {
-                    ESP_LOGI(TAG, "Get SIM IMEI result: %s", ec2x_dce->parent.imei);
+                    ESP_LOGI(TAG, "SIM IMEI result: %s", ec2x_dce->parent.imei);
                     send_at_retry_nb = 0;
                     gsm_init_step++;
                 }
                 else
                 {
                     send_at_retry_nb++;
-                    if (send_at_retry_nb > 10)
+                    if (send_at_retry_nb > 7)
                     {
-                        ESP_LOGE(TAG, "Get SIM IMEI: FAILED!");
+                        ESP_LOGE(TAG, "Get SIM IMEI: FAILED!, reset module");
                         send_at_retry_nb = 0;
-                        gsm_init_step++;
+                        send_at_retry_nb = 0;
+                        gsm_init_step = 0;
+                        gsm_init_done = false;
+                        gsm_reset_module();
                     }
                 }
                 break;
-
-                //				case 6:
-                //					ESP_LOGI(TAG, "Gui lenh CNMI: Thiet lap che do SMS");
-                //					err = ec2x_set_CNMI(ec2x_dce);
-                //					if(err == ESP_OK) {
-                //						send_at_retry_nb = 0;
-                //						gsm_init_step++;
-                //					}
-                //					break;
-                //				case 7:
-                //					ESP_LOGI(TAG, "Gui lenh CMGF: Thiet lap SMS o che do text");
-                //					err = ec2x_set_CMGF(ec2x_dce);
-                //					if(err == ESP_OK) {
-                //						send_at_retry_nb = 0;
-                //						gsm_init_step++;
-                //					}
-                //					break;
 
             case 6:
                 ESP_LOGI(TAG, "De-active PDP context");
@@ -1254,7 +1229,13 @@ static void gsm_manager_task(void *arg)
                     }
                 }
                 break;
-            case 7:
+
+            case 7:                
+                ec2x_do_unlock_band(ec2x_dce);
+                gsm_init_step++;
+                break;
+
+            case 8:
                 ESP_LOGI(TAG, "Setup APN");
                 err = ec2x_set_APN(ec2x_dce);
                 if (err == ESP_OK)
@@ -1273,23 +1254,24 @@ static void gsm_manager_task(void *arg)
                     }
                 }
                 break;
-            case 8:
-                /*
-					ESP_LOGI(TAG, "Gui lenh QIACT: Active PDP context");
-					err = ec2x_set_QIACT(ec2x_dce);
-					if(err == ESP_OK) {
-						send_at_retry_nb = 0;
-						gsm_init_step++;
-					} else {
-						send_at_retry_nb++;
-						if(send_at_retry_nb > 15) {
-							ESP_LOGE(TAG, "Active PDP context: FAILED!");
-							send_at_retry_nb = 0;
-							gsm_init_step++;
-						}
-					} */
 
-                //Test: KhÃ´ng dÃ¹ng lá»‡nh QIACT ná»¯a Ä‘á»ƒ cháº¡y 2G/3G
+            case 9:
+                /*
+                    ESP_LOGI(TAG, "Gui lenh QIACT: Active PDP context");
+                    err = ec2x_set_QIACT(ec2x_dce);
+                    if(err == ESP_OK) {
+                        send_at_retry_nb = 0;
+                        gsm_init_step++;
+                    } else {
+                        send_at_retry_nb++;
+                        if(send_at_retry_nb > 15) {
+                            ESP_LOGE(TAG, "Active PDP context: FAILED!");
+                            send_at_retry_nb = 0;
+                            gsm_init_step++;
+                        }
+                    } */
+
+                // Test: KhÃ´ng dÃ¹ng lá»‡nh QIACT ná»¯a Ä‘á»ƒ cháº¡y 2G/3G
                 ESP_LOGI(TAG, "Get network info");
                 ec2x_dce->parent.is_get_net_info = 0;
                 err = ec2x_get_network_band(ec2x_dce);
@@ -1311,7 +1293,8 @@ static void gsm_manager_task(void *arg)
                     }
                 }
                 break;
-            case 9:
+
+            case 10:
                 ESP_LOGI(TAG, "Register GSM network");
                 err = ec2x_set_CGREG(ec2x_dce);
                 if (err == ESP_OK)
@@ -1326,315 +1309,126 @@ static void gsm_manager_task(void *arg)
                     {
                         ESP_LOGE(TAG, "Register GSM network: FAILED!");
                         send_at_retry_nb = 0;
-                        gsm_init_step++;
+                        gsm_init_step = 0;
+                        gsm_init_done = false;
+                        gsm_reset_module();
                     }
                 }
                 break;
-            case 10:
+
+            case 11:
                 send_at_retry_nb = 0;
 
                 if (ec2x_dce != NULL)
                 {
+                    static int csq_err_counter = 0;
                     /* Print Module ID, Operator, IMEI, IMSI */
                     ESP_LOGI(TAG, "Module name: %s, IMEI: %s", ec2x_dce->parent.name, ec2x_dce->parent.imei);
                     ESP_LOGI(TAG, "SIM IMEI: %s, IMSI: %s", ec2x_dce->parent.imei, ec2x_dce->parent.imsi);
                     ESP_LOGI(TAG, "Network: %s,%s,%s,%s", ec2x_dce->parent.oper, ec2x_dce->parent.act_string,
-                            ec2x_dce->parent.network_band, ec2x_dce->parent.network_channel);
-
+                             ec2x_dce->parent.network_band, ec2x_dce->parent.network_channel);
                     ec2x_dce->parent.set_flow_ctrl(&ec2x_dce->parent, MODEM_FLOW_CONTROL_NONE);
-
-                    //ec2x_dce->parent.store_profile(&ec2x_dce->parent);	//sáº½ lÆ°u cáº¥u hÃ¬nh baudrate -> khÃ´ng dÃ¹ng!
+                    //						ec2x_dce->parent.store_profile(&ec2x_dce->parent);	//sáº½ lÆ°u cáº¥u hÃ¬nh baudrate -> khÃ´ng dÃ¹ng!
 
                     /* Get signal quality */
                     uint32_t rssi = 0, ber = 0;
                     ec2x_dce->parent.get_signal_quality(&ec2x_dce->parent, &rssi, &ber);
                     ESP_LOGI(TAG, "RSSI: %d, Ber: %d", rssi, ber);
-                    //ec2x_dce->parent.rssi = rssi;
+                    ec2x_dce->parent.rssi = rssi;
 
                     /* Get battery voltage */
                     uint32_t voltage = 0, bcs = 0, bcl = 0;
                     ec2x_dce->parent.get_battery_status(&ec2x_dce->parent, &bcs, &bcl, &voltage);
+                    ec2x_dce->parent.voltage = voltage;
                     ESP_LOGI(TAG, "GSM Vin: %d mV", voltage);
 
                     /* Post event init done to main task to store GSM IMEI */
-//                    esp_modem_dte_t *esp_dte = __containerof(ec2x_dce->parent.dte, esp_modem_dte_t, parent);
-//                    esp_event_post_to(esp_dte->event_loop_hdl, ESP_MODEM_EVENT, ESP_MODEM_EVENT_INIT_DONE, NULL, 0, 0);
-                    // CSQ : NOW
-                    csq = rssi;
+                    //                    esp_modem_dte_t *esp_dte = __containerof(ec2x_dce->parent.dte, esp_modem_dte_t, parent);
+                    //                    esp_event_post_to(esp_dte->event_loop_hdl, ESP_MODEM_EVENT, ESP_MODEM_EVENT_INIT_DONE, NULL, 0, 0);
 
                     if (rssi != 99)
                     {
-						/* Only open ppp stack when sim inserted and valid */
-						if (strlen(ec2x_dce->parent.imsi) >= 15)
-						{
-							ec2x_dce->parent.imsi[15] = '\0';
-							gsm_init_done = true;
+                        csq_err_counter = 0;
+                        /* Only open ppp stack when sim inserted and valid */
+                        if (strlen(ec2x_dce->parent.imsi) >= 15)
+                        {
+                            ec2x_dce->parent.imsi[15] = '\0';
+                            if (gsm_init_done == false)
+                            {
+                                gsm_init_done = true;
 
-							/* Setup PPP environment */
-							ESP_LOGI(TAG, "Start ppp\r\n");
-							assert(ESP_OK == esp_modem_setup_ppp(ec2x_dce->parent.dte));
+                                /* Setup PPP environment */
+                                ESP_LOGI(TAG, "Start ppp");
+                                esp_netif_inherent_config_t netif_gsm_config = ESP_NETIF_INHERENT_DEFAULT_PPP();
+                                netif_gsm_config.route_prio = 3;
+                                netif_gsm_config.if_desc = "netif_gsm";
+                                esp_netif_config_t cfg = ESP_NETIF_DEFAULT_PPP();
+                                cfg.base = &netif_gsm_config;//,// use specific behaviour configuration
+                                cfg.driver = NULL;//,                 
+                                cfg.stack = ESP_NETIF_NETSTACK_DEFAULT_PPP;//, // use default WIFI-like network stack configuration
+                                static esp_netif_t *esp_netif;
+                                if (!esp_netif)
+                                {
+                                    esp_netif = esp_netif_new(&cfg);
+                                }
+                                assert(esp_netif);
+                                // ppp_set_usepeerdns(ppp, 1);
+                                void *modem_netif_adapter = esp_modem_netif_setup(ec2x_dce->parent.dte);
+                                assert(modem_netif_adapter);
+                                esp_modem_netif_set_default_handlers(modem_netif_adapter, esp_netif);
+                                if (esp_netif_attach(esp_netif, modem_netif_adapter) == ESP_OK)
+                                {
+                                    goto end;
+                                }
 
-                            // ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &on_ip_event, NULL));
-                            // esp_netif_inherent_config_t netif_gsm_config = ESP_NETIF_INHERENT_DEFAULT_PPP();
-                            // netif_gsm_config.route_prio = 3;
-                            // netif_gsm_config.if_desc = "netif_gsm";
-                            // esp_netif_config_t cfg = {
-                            //     .base = &netif_gsm_config,// use specific behaviour configuration
-                            //     .driver = NULL,                 
-                            //     .stack = ESP_NETIF_NETSTACK_DEFAULT_PPP, // use default WIFI-like network stack configuration
-                            // };
-
-                            // esp_netif_t *gsm_esp_netif = esp_netif_new(&cfg);
-                            // assert(gsm_esp_netif);
-                            // //esp_event_loop_create_default();
-                            // //ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &on_ip_event, NULL));
-                            // void* modem_netif_adapter = esp_modem_netif_setup(ec2x_dce->parent.dte);
-                            // ESP_LOGI(TAG, "netif init");
-                            // //vTaskDelay (1000);
-                            // esp_modem_netif_set_default_handlers(modem_netif_adapter, gsm_esp_netif);
-                            // /* attach the modem to the network interface */
-                            // if (esp_netif_attach(gsm_esp_netif, modem_netif_adapter) == ESP_OK)
-                            // {
-                            //     ESP_LOGI (TAG, "NETIF ATTACK OK");
-                            // }
-                            // assert(ESP_OK == esp_modem_start_ppp(ec2x_dce->parent.dte));
-                            goto end;                            
-	                        
-						}
-						else
-						{
-							ESP_LOGE(TAG, "Cannot get sim imei, reset gsm module");
-							send_at_retry_nb = 0;
-							gsm_init_step = 0;
-							gsm_init_done = false;
-							gsm_reset_module();
-						}
+                                // assert(ESP_OK == esp_modem_setup_ppp(ec2x_dce->parent.dte));
+                            }
+                        }
+                        else
+                        {
+                            ESP_LOGE(TAG, "Cannot get sim imei, reset gsm module");
+                            send_at_retry_nb = 0;
+                            gsm_init_step = 0;
+                            gsm_init_done = false;
+                            gsm_reset_module();
+                        }
                     }
                     else
                     {
-                    	gsm_init_step--;
+                        gsm_init_step--;
+                        if (csq_err_counter ++ > 10)
+                        {
+                            csq_err_counter = 0;
+                            gsm_init_step = 0;
+                            gsm_init_done = false;
+                            gsm_reset_module();
+                        }
                     }
-
                 }
                 else
                 {
                     ESP_LOGE(TAG, "ec2x_dce is NULL!");
-                    //SoftResetSystem(101);
-                    //esp_restart();
-                    device_reboot(101);
+                    esp_restart();
                 }
                 break;
 
             default:
-            	ESP_LOGE(TAG, "Unknown step %u\r\n", gsm_init_step);
+                ESP_LOGE(TAG, "Unknown step %u\r\n", gsm_init_step);
                 break;
             }
-            vTaskDelay(1000 / portTICK_RATE_MS);
         }
-        
-        
+        static uint32_t monitor_task = 0;
+        if (monitor_task++ > 10)
+        {
+            monitor_task = 0;
+            ESP_LOGD(TAG, "Task gsm watermark %ukb", uxTaskGetStackHighWaterMark(NULL));
+        }
+        vTaskDelay(1000 / portTICK_RATE_MS);
     }
     end:
     ESP_LOGI("EC2x", "\t\t\r\n--- gsm_manager_task is exit ---");
-        vTaskDelay (5000 / portTICK_RATE_MS);
-        vTaskDelete(NULL);
+    vTaskDelete(NULL);
 }
-
-//static void gsm_manager_task(void *arg)
-//{
-//    ESP_LOGI("EC2x", "\t\t--- gsm_manager_task is running ---");
-//
-//	esp_err_t err;
-//	/* Sync between DTE and DCE : ATV1 */
-//	uint8_t gsm_init_step = 0;
-//	bool gsm_init_done = false;
-//	uint8_t send_at_retry_nb = 0;
-//
-//    for (;;) {
-//        if(!gsm_init_done && ec2x_dce != NULL) {
-//
-//			send_at_retry_nb++;
-//			if(send_at_retry_nb > 15) {
-//				ESP_LOGE(TAG, "Modem not response AT command. Reset module...");
-//
-//				//Power off module by PowerKey
-//				gsm_hw_ctrl_power_key(1);
-//				vTaskDelay(1000 / portTICK_PERIOD_MS);
-//				gsm_hw_ctrl_power_key(0);
-//
-//				//Turn off Vbat +4V2
-//				gsm_hw_ctrl_power_en(0);
-//				vTaskDelay(3000 / portTICK_PERIOD_MS);
-//
-//				//Turn ON Vbat +4V2
-//				gsm_hw_ctrl_power_en(1);
-//				vTaskDelay(500 / portTICK_PERIOD_MS);	//Waiting for Vbat stable 500ms
-//
-//				/* Turn On module by PowerKey */
-//				gsm_hw_ctrl_power_key(1);
-//				vTaskDelay(1000 / portTICK_PERIOD_MS);
-//				gsm_hw_ctrl_power_key(0);
-//
-//				send_at_retry_nb = 0;
-//				gsm_init_step = 0;
-//
-////				esp_restart();
-//			}
-//
-//			switch(gsm_init_step) {
-//				case 0:
-//					ESP_LOGI(TAG, "Gui lenh ATV1");
-//					err = esp_modem_dce_sync(&(ec2x_dce->parent));
-//					if(err == ESP_OK) {
-//						send_at_retry_nb = 0;
-//						gsm_init_step++;
-//					}
-//					break;
-//				case 1:
-//					ESP_LOGI(TAG, "Gui lenh ATE0");
-//					err = esp_modem_dce_echo(&(ec2x_dce->parent), false);
-//					if(err == ESP_OK) {
-//						send_at_retry_nb = 0;
-//						gsm_init_step++;
-//					}
-//					break;
-////				case 2:
-////					/* Thay Ä‘á»•i tá»‘c Ä‘á»™ truyá»�n dá»¯ liá»‡u UART baudrate
-////					* Baudrate 115200 cháº¡y á»•n Ä‘á»‹nh khi stream opus
-////					* Baudrate 230400 stream Ä‘Æ°á»£c mp3 128kbps
-////					*/
-////					ESP_LOGI(TAG, "Gui lenh IPR");
-////					err = ec2x_set_IPR(ec2x_dce, 115200);
-////					if(err == ESP_OK) {
-////						/* Thay Ä‘á»•i UART baudrate cá»§a ESP */
-////						if(uart_set_baudrate(UART_NUM_1, 115200) == ESP_OK) {
-////							send_at_retry_nb = 0;
-////							gsm_init_step++;
-////						}
-////					}
-////					break;
-////				case 3:
-////					ESP_LOGI(TAG, "Gui lenh CGMM: Get module name");
-////					err = ec2x_get_module_name(ec2x_dce);
-////					if(err == ESP_OK) {
-////						send_at_retry_nb = 0;
-////						gsm_init_step++;
-////					}
-////					break;
-//				case 2:
-//					ESP_LOGI(TAG, "Gui lenh CGSN: Get module IMEI");
-//					memset(ec2x_dce->parent.imei, 0, sizeof(ec2x_dce->parent.imei));
-//					err = ec2x_get_imei_number(ec2x_dce);
-//					if(err == ESP_OK) {
-//						send_at_retry_nb = 0;
-//						gsm_init_step++;
-//					}
-//					break;
-//				case 3:
-//					ESP_LOGI(TAG, "Gui lenh CIMI: Get SIM IMEI");
-//					memset(ec2x_dce->parent.imsi, 0, sizeof(ec2x_dce->parent.imsi));
-//					err = ec2x_get_imsi_number(ec2x_dce);
-//					if(err == ESP_OK) {
-//						send_at_retry_nb = 0;
-//						gsm_init_step++;
-//					}
-//					break;
-////				case 6:
-////					ESP_LOGI(TAG, "Gui lenh CNMI: Thiet lap che do SMS");
-////					err = ec2x_set_CNMI(ec2x_dce);
-////					if(err == ESP_OK) {
-////						send_at_retry_nb = 0;
-////						gsm_init_step++;
-////					}
-////					break;
-////				case 7:
-////					ESP_LOGI(TAG, "Gui lenh CMGF: Thiet lap SMS o che do text");
-////					err = ec2x_set_CMGF(ec2x_dce);
-////					if(err == ESP_OK) {
-////						send_at_retry_nb = 0;
-////						gsm_init_step++;
-////					}
-////					break;
-//
-//				case 4:
-//					ESP_LOGI(TAG, "Gui lenh QIDEACT: De-active PDP context");
-//					err = ec2x_set_QIDEACT(ec2x_dce);
-//					if(err == ESP_OK) {
-//						send_at_retry_nb = 0;
-//						gsm_init_step++;
-//					}
-//					break;
-//				case 5:
-//					ESP_LOGI(TAG, "Gui lenh CGDCONT: Thiet lap APN");
-//					err = ec2x_set_APN(ec2x_dce);
-//					if(err == ESP_OK) {
-//						send_at_retry_nb = 0;
-//						gsm_init_step++;
-//					}
-//					break;
-//				case 6:
-//					ESP_LOGI(TAG, "Gui lenh QIACT: Active PDP context");
-//					err = ec2x_set_QIACT(ec2x_dce);
-//					if(err == ESP_OK) {
-//						send_at_retry_nb = 0;
-//						gsm_init_step++;
-//					}
-//					break;
-//				case 7:
-//					ESP_LOGI(TAG, "Gui lenh CGREG: Register GPRS network");
-//					err = ec2x_set_CGREG(ec2x_dce);
-//					if(err == ESP_OK) {
-//						send_at_retry_nb = 0;
-//						gsm_init_step++;
-//					}
-//					break;
-//				case 8:
-//					gsm_init_done = true;
-//					send_at_retry_nb = 0;
-//
-//					if(ec2x_dce != NULL) {
-//						/* Print Module ID, Operator, IMEI, IMSI */
-//						ESP_LOGI(TAG, "Module: %s", ec2x_dce->parent.name);
-//						ESP_LOGI(TAG, "Operator: %s", ec2x_dce->parent.oper);
-//						ESP_LOGI(TAG, "IMEI: %s", ec2x_dce->parent.imei);
-//						ESP_LOGI(TAG, "IMSI: %s", ec2x_dce->parent.imsi);
-//
-//
-//						ec2x_dce->parent.set_flow_ctrl(&ec2x_dce->parent, MODEM_FLOW_CONTROL_NONE);
-////						ec2x_dce->parent.store_profile(&ec2x_dce->parent);	//sáº½ lÆ°u cáº¥u hÃ¬nh baudrate -> khÃ´ng dÃ¹ng!
-//
-//						/* Get signal quality */
-//						uint32_t rssi = 0, ber = 0;
-//						ec2x_dce->parent.get_signal_quality(&ec2x_dce->parent, &rssi, &ber);
-//						ESP_LOGI(TAG, "rssi: %d, ber: %d", rssi, ber);
-//
-//						/* Get battery voltage */
-//						uint32_t voltage = 0, bcs = 0, bcl = 0;
-//						ec2x_dce->parent.get_battery_status(&ec2x_dce->parent, &bcs, &bcl, &voltage);
-//						ESP_LOGI(TAG, "Battery voltage: %d mV", voltage);
-//
-//						/* post event init done to main task */
-//						esp_modem_dte_t *esp_dte = __containerof(ec2x_dce->parent.dte, esp_modem_dte_t, parent);
-//						esp_event_post_to(esp_dte->event_loop_hdl, ESP_MODEM_EVENT, MODEM_EVENT_INIT_DONE, NULL, 0, 0);
-//
-//						/* Setup PPP environment */
-//						esp_modem_setup_ppp(ec2x_dce->parent.dte);
-//					}else {
-//						ESP_LOGE(TAG, "ec2x_dce is NULL!");
-//						esp_restart();
-//					}
-//					break;
-//				default:
-//					break;
-//			}
-//    	}
-//
-//        vTaskDelay(1000 / portTICK_RATE_MS);
-//    }
-//
-//    ESP_LOGI("EC2x", "\t\t--- gsm_manager_task is exit ---");
-//    vTaskDelete(NULL);
-//}
 
 /**
  * @brief Deinitialize ec2x object
@@ -1676,55 +1470,46 @@ modem_dce_t *ec2x_init(modem_dte_t *dte)
     ec2x_dce->parent.store_profile = esp_modem_dce_store_profile;
     ec2x_dce->parent.set_flow_ctrl = esp_modem_dce_set_flow_ctrl;
     ec2x_dce->parent.define_pdp_context = esp_modem_dce_define_pdp_context;
-    ec2x_dce->parent.hang_up = esp_modem_dce_hang_up;
+    ec2x_dce->parent.hang_up = NULL; // esp_modem_dce_hang_up;
     ec2x_dce->parent.get_signal_quality = ec2x_get_signal_quality;
     ec2x_dce->parent.get_battery_status = ec2x_get_battery_status;
     ec2x_dce->parent.set_working_mode = ec2x_set_working_mode;
     ec2x_dce->parent.power_down = ec2x_power_down;
     ec2x_dce->parent.deinit = ec2x_deinit;
-    
 
     gsm_hardware_initialize();
-    
-    gsm_hw_ctrl_power_key(1);
-    //Deactive PowerKey
-    ESP_LOGI(TAG, "Deactive power key\r\n");
+
+    // Deactive PowerKey
+    ESP_LOGD(TAG, "Deactive power key");
     gsm_hw_ctrl_power_key(0);
-//  no need en_pin 
-/*
-    //Turn off Vbat +4V2
+    //app_io_expander_commit_write();
+
+    // Turn off Vbat +4V2
     gsm_hw_ctrl_power_en(0);
-    ESP_LOGI(TAG, "Turn off vbat\r\n");
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
+    ESP_LOGD(TAG, "Turn off vbat");
+    vTaskDelay(4000 / portTICK_PERIOD_MS);
 
-    //Turn ON Vbat +4V2
-    ESP_LOGI(TAG, "Turn on vbat\r\n");
+    // Turn ON Vbat +4V2
+    ESP_LOGD(TAG, "Turn on vbat");
     gsm_hw_ctrl_power_en(1);
-
-*/
-    vTaskDelay(1000 / portTICK_PERIOD_MS); //Waiting for Vbat stable 500ms
+    //app_io_expander_commit_write();
+    vTaskDelay(3000 / portTICK_PERIOD_MS); // Waiting for Vbat stable
 
     /* Turn On module by PowerKey */
-    ESP_LOGI(TAG, "Turn on power key level 1, pin %d\r\n", CONFIG_CONFIG_GSM_POWER_KEY_PIN);
+    ESP_LOGD(TAG, "Turn on power key level 1, pin %d", CONFIG_CONFIG_GSM_POWER_KEY_PIN);
     gsm_hw_ctrl_power_key(1);
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-//    ESP_LOGI(TAG, "Turn off power key level 0, pin %d\r\n", CONFIG_CONFIG_GSM_POWER_KEY_PIN);
-//    gsm_hw_ctrl_power_key(0);
+    //app_io_expander_commit_write();
+    vTaskDelay(1500 / portTICK_PERIOD_MS);
+    ESP_LOGD(TAG, "Turn off power key level 0, pin %d", CONFIG_CONFIG_GSM_POWER_KEY_PIN);
+    gsm_hw_ctrl_power_key(0);
+    //app_io_expander_commit_write();
 
-    ESP_LOGI(TAG, "Start GSM manager task\r\n");
-    xTaskCreate(gsm_manager_task, "gsm_manager_task", 4 * 1024, NULL, 5, NULL);
-
-    
-//    ESP_LOGI(TAG, "ec2x_init exit!");
-    // xSemaphoreGive(GSM_Sem);
-    // if (timeout_with_4g_ec2x)
-    // {
-    //     goto err;
-    // }
+    ESP_LOGD(TAG, "Start GSM manager task");
+    xTaskCreate(gsm_manager_task, "gsm_manager_task", 3 * 1024+512, NULL, 5, NULL);
 
     return &(ec2x_dce->parent);
 // err_io:
-//    free(ec2x_dce);
+//     free(ec2x_dce);
 err:
     return NULL;
 }

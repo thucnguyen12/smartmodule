@@ -18,7 +18,7 @@
 //#include "esp_wifi.h"
 #include <string.h>
 //RTC
-#include "rtc.h"
+#include "esp32/rtc.h"
 #include "esp_sntp.h"
 #include "app_time_sync.h"
 
@@ -32,6 +32,9 @@ void time_sync_notification_cb(struct timeval *tv)
 
     ESP_LOGI(TAG, "Notification of a time synchronization event");
 }
+
+time_t now = 0;
+struct tm timeinfo = { 0 };
 
 static void initialize_sntp(void)
 {
@@ -75,8 +78,7 @@ static void obtain_time(void)
     initialize_sntp();
 
     // wait for time to be set
-    time_t now = 0;
-    struct tm timeinfo = { 0 };
+
     int retry = 0;
     const int retry_count = 10;
     while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < retry_count) {
@@ -93,8 +95,6 @@ static void obtain_time(void)
 
 uint32_t app_time(void)
 {
-    time_t now;
-    static struct tm timeinfo = { 0 };
     static struct tm last_timeinfo = { 0 };
     date_time_t time_now_struct;
     // if ((timeinfo.tm_hour - last_timeinfo.tm_hour) < 1)

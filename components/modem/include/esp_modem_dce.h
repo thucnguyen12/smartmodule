@@ -23,7 +23,6 @@ extern "C" {
 
 typedef struct modem_dce modem_dce_t;
 typedef struct modem_dte modem_dte_t;
-typedef struct esp_modem_dce esp_modem_dce_t;
 
 /**
  * @brief Result Code from DCE
@@ -46,6 +45,11 @@ typedef struct esp_modem_dce esp_modem_dce_t;
 #define MODEM_MAX_OPERATOR_LENGTH (32) /*!< Max Operator Name Length */
 #define MODEM_IMEI_LENGTH (15)         /*!< IMEI Number Length */
 #define MODEM_IMSI_LENGTH (15)         /*!< IMSI Number Length */
+// HuyTV
+#define MODEM_MAX_ACCESS_TECH_STR_LEN       15
+#define MODEM_MAX_NETWORK_BAND_STR_LEN      15
+#define MODEM_NETWORK_CHANNEL_LENGTH        15
+// end
 
 /**
  * @brief Specific Timeout Constraint, Unit: millisecond
@@ -74,14 +78,12 @@ typedef enum {
 struct modem_dce {
     char imei[MODEM_IMEI_LENGTH + 1];                                                 /*!< IMEI number */
     char imsi[MODEM_IMSI_LENGTH + 1];                                                 /*!< IMSI number */
-    char name[MODEM_MAX_NAME_LENGTH];                                                 /*!< Module name */
-    char oper[MODEM_MAX_OPERATOR_LENGTH];                                             /*!< Operator name */
-    char act_string [64];
-    char network_band [64];
-    char network_channel [32];
-    char is_get_net_info;
+    char name[MODEM_MAX_NAME_LENGTH + 1];                                             /*!< Module name */
+    char oper[MODEM_MAX_OPERATOR_LENGTH + 1];                                         /*!< Operator name */
+    char network_channel[MODEM_NETWORK_CHANNEL_LENGTH + 1];                            /*!< Network channgel */
     uint8_t act;                                                                      /*!< Access technology */
-    const char *prompt;                                                               /*!< Modem prompt string */
+    uint8_t act_string[MODEM_MAX_ACCESS_TECH_STR_LEN + 1];                                /*!< Access technology in string format */
+    uint8_t network_band[MODEM_MAX_NETWORK_BAND_STR_LEN + 1];                             /*!< Access technology in string format */
     modem_state_t state;                                                              /*!< Modem working state */
     modem_mode_t mode;                                                                /*!< Working mode */
     modem_dte_t *dte;                                                                 /*!< DTE which connect to DCE */
@@ -100,16 +102,11 @@ struct modem_dce {
     esp_err_t (*hang_up)(modem_dce_t *dce);                             /*!< Hang up */
     esp_err_t (*power_down)(modem_dce_t *dce);                          /*!< Normal power down */
     esp_err_t (*deinit)(modem_dce_t *dce);                              /*!< Deinitialize */
-};
 
-/**
-  * @brief ESP Modem with private resource
-  *
-  */
- struct esp_modem_dce {
-     void *priv_resource; /*!< Private resource */
-     modem_dce_t parent;  /*!< DCE parent class */
- };
+    uint32_t is_get_net_info;
+    int8_t rssi;
+    uint16_t voltage;
+};
 
 #ifdef __cplusplus
 }

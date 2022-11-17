@@ -3,8 +3,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "min.h"
+#include "min_id.h"
 
 #define TAG "gsm_hw"
+
+extern min_context_t m_min_context;
+extern void send_min_data(min_msg_t *min_msg);
+
 
 /*
 static IRAM_ATTR void ri_isr_callback(void *arg)
@@ -55,24 +61,28 @@ void gsm_hardware_initialize(void)
     
 
     io_conf.intr_type = GPIO_PIN_INTR_DISABLE;
-    io_conf.pin_bit_mask = (1ULL<<CONFIG_CONFIG_GSM_POWER_KEY_PIN);
+    io_conf.pin_bit_mask = (1ULL<<CONFIG_GSM_POWER_KEY_PIN);
     io_conf.mode = GPIO_MODE_OUTPUT;
     io_conf.pull_up_en = 0;
     io_conf.pull_down_en = 0;
     gpio_config(&io_conf);
-    gpio_set_level(CONFIG_CONFIG_GSM_POWER_KEY_PIN, 1);
+    gpio_set_level(CONFIG_GSM_POWER_KEY_PIN, 1);
     ESP_LOGI(TAG, "GSM io init done");
 }
 
 void gsm_hw_ctrl_power_key(bool on)
 {
-    gpio_set_level(CONFIG_CONFIG_GSM_POWER_KEY_PIN, on ? 1 : 0);
+    gpio_set_level(CONFIG_GSM_POWER_KEY_PIN, on ? 1 : 0);
 }
 
 void gsm_hw_ctrl_power_en(bool on)
 {
-//	ESP_LOGI(TAG, "Control pin %u-level %d\r\n", CONFIG_CONFIG_GSM_POWER_EN_PIN, on ? 0 : 1);
-	//gpio_set_level(CONFIG_CONFIG_GSM_POWER_EN_PIN, on ? 1 : 0);
-    //nơ ctrl now
+
+    uint8_t logic_level = on;
+    static min_msg_t logic_min_msg;
+    logic_min_msg.id = MIN_ID_GPIO_CONTROL;
+    logic_min_msg.payload = &logic_level;
+    logic_min_msg.len = sizeof (uint8_t);
+    send_min_data (&logic_min_msg);
 }
 

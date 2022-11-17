@@ -28,6 +28,8 @@ extern "C" {
  */
 modem_dce_t *ec2x_init(modem_dte_t *dte);
 
+void ex2x_restart_module(void);
+
 #ifdef __cplusplus
 }
 #endif

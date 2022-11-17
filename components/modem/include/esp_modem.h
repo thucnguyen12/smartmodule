@@ -36,7 +36,10 @@ ESP_EVENT_DECLARE_BASE(ESP_MODEM_EVENT);
 typedef enum {
     ESP_MODEM_EVENT_PPP_START = 0,       /*!< ESP Modem Start PPP Session */
     ESP_MODEM_EVENT_PPP_STOP  = 3,       /*!< ESP Modem Stop PPP Session*/
-    ESP_MODEM_EVENT_UNKNOWN   = 4        /*!< ESP Modem Unknown Response */
+    ESP_MODEM_EVENT_UNKNOWN   = 4,        /*!< ESP Modem Unknown Response */
+    //Phinht: add user event
+    ESP_MODEM_EVENT_INIT_DONE = 7,		/* GSM module init done */
+    ESP_MODEM_EVENT_PPP_DISCONNECT_RESET_GSM = 8, 
 } esp_modem_event_t;
 
 /**
@@ -56,14 +59,13 @@ typedef struct {
     int cts_io_num;                 /*!< CTS Pin Number */
     int rx_buffer_size;             /*!< UART RX Buffer Size */
     int tx_buffer_size;             /*!< UART TX Buffer Size */
+    int pattern_queue_size;         /*!< UART Pattern Queue Size */
     int event_queue_size;           /*!< UART Event Queue Size */
     uint32_t event_task_stack_size; /*!< UART Event Task Stack size */
     int event_task_priority;        /*!< UART Event Task Priority */
-    union {
-        int dte_buffer_size;        /*!< Internal buffer size */
-        int line_buffer_size;       /*!< Compatible option for the internal buffer size */
-    };
+    int line_buffer_size;           /*!< Line buffer size for command mode */
 } esp_modem_dte_config_t;
+
 
 /**
  * @brief Type used for reception callback
@@ -77,7 +79,7 @@ typedef esp_err_t (*esp_modem_on_receive)(void *buffer, size_t len, void *contex
  */
 #define ESP_MODEM_DTE_DEFAULT_CONFIG()          \
     {                                           \
-        .port_num = UART_NUM_0,                 \
+        .port_num = UART_NUM_1,                 \
         .data_bits = UART_DATA_8_BITS,          \
         .stop_bits = UART_STOP_BITS_1,          \
         .parity = UART_PARITY_DISABLE,          \
@@ -89,10 +91,11 @@ typedef esp_err_t (*esp_modem_on_receive)(void *buffer, size_t len, void *contex
         .cts_io_num = 23,                       \
         .rx_buffer_size = 1024,                 \
         .tx_buffer_size = 512,                  \
+        .pattern_queue_size = 20,               \
         .event_queue_size = 30,                 \
         .event_task_stack_size = 2048,          \
         .event_task_priority = 5,               \
-        .dte_buffer_size = 512                  \
+        .line_buffer_size = 512                 \
     }
 
 /**

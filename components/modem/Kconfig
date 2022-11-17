@@ -1,9 +1,51 @@
-menu "ESP-MODEM"
+menu "Modem"
 
-    config EXAMPLE_COMPONENT_MODEM_APN
+    config CONFIG_COMPONENT_MODEM_APN
         string "Set Access Point Name (APN)"
-        default "CMNET"
+        default "v-internet"
         help
             Logical name which is used to select the GGSN or the external packet data network.
 
+    config CONFIG_GSM_POWER_EN_PIN
+        int "GSM power en"
+        default -1
+        help
+            GSM power control via mosfet
+
+    config CONFIG_GSM_POWER_KEY_PIN
+        int "GSM power key"
+        default -1
+        help
+            GSM power key pin
+
+    config CONFIG_GSM_RI_PIN
+        int "GSM ring"
+        range 0 39
+        default 39
+        help
+            GSM power key pin
+
+   config CONFIG_GSM_RESET_PIN
+        int "GSM reset"
+        default -1
+        help
+            GSM reset pin         
+            
+
+    choice GSM_MODEL
+            prompt "Select GSM module"
+            default GSM_EC2X
+            help
+                Select the GSM device to use in project.
+
+            config GSM_EC2X
+                bool "EC2X"
+                help
+                    QUECTEL EC2X
+
+            config GSM_FIBOCOM
+                bool "L610-CN"
+                help
+                    Fibocom L610-CN
+    endchoice # GSM_MODEL
 endmenu
